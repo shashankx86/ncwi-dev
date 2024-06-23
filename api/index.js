@@ -48,7 +48,7 @@ const parseServices = (data) => {
   const serviceRegex = /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
   let match;
   const services = [];
-  
+
   while ((match = serviceRegex.exec(data)) !== null) {
     const [ , UNIT, LOAD, ACTIVE, SUB, DESCRIPTION ] = match;
     services.push({ UNIT, LOAD, ACTIVE, SUB, DESCRIPTION });
@@ -57,8 +57,11 @@ const parseServices = (data) => {
   return services;
 };
 
+// Create a router for systemd related routes
+const systemRouter = express.Router();
+
 // Endpoint to list all running services owned by the user
-app.get('/services', (req, res) => {
+systemRouter.get('/services', (req, res) => {
   executeCommand('systemctl --user list-units --type=service --state=running', (error, stdout) => {
     if (error) {
       res.status(500).json({ message: 'Error fetching services', error });
@@ -70,7 +73,7 @@ app.get('/services', (req, res) => {
 });
 
 // Endpoint to start a service
-app.post('/services/start', (req, res) => {
+systemRouter.post('/services/start', (req, res) => {
   const { service } = req.body;
   if (!service) {
     return res.status(400).json({ message: 'Service name is required' });
@@ -85,7 +88,7 @@ app.post('/services/start', (req, res) => {
 });
 
 // Endpoint to stop a service
-app.post('/services/stop', (req, res) => {
+systemRouter.post('/services/stop', (req, res) => {
   const { service } = req.body;
   if (!service) {
     return res.status(400).json({ message: 'Service name is required' });
@@ -98,6 +101,9 @@ app.post('/services/stop', (req, res) => {
     }
   });
 });
+
+// Mount the systemd related routes under /system
+app.use('/system', systemRouter);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
