@@ -16,6 +16,7 @@ export default {
       terminal: null,
       fitAddon: null,
       socket: null,
+      currentCommand: '', // Store the current command being typed
     };
   },
   mounted() {
@@ -33,7 +34,7 @@ export default {
     };
 
     this.terminal.onData((data) => {
-      this.socket.send(data);
+      this.handleInput(data);
     });
 
     this.terminal.writeln('Connected to reverse shell');
@@ -42,7 +43,27 @@ export default {
     if (this.socket) {
       this.socket.close();
     }
-  }
+  },
+  methods: {
+    handleInput(data) {
+      switch (data) {
+        case '\r': // Enter key
+          this.socket.send(this.currentCommand);
+          this.currentCommand = '';
+          this.terminal.write('\r\n');
+          break;
+        case '\u007F': // Backspace key
+          if (this.currentCommand.length > 0) {
+            this.currentCommand = this.currentCommand.slice(0, -1);
+            this.terminal.write('\b \b');
+          }
+          break;
+        default:
+          this.currentCommand += data;
+          this.terminal.write(data);
+          break;
+      }
+    },
+  },
 };
 </script>
-
