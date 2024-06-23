@@ -45,7 +45,7 @@ const executeCommand = (command, callback) => {
 
 // Helper function to parse services using regex
 const parseServices = (data) => {
-  const serviceRegex = /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
+  const serviceRegex = /^\s*(\S+\.service)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
   let match;
   const services = [];
 
