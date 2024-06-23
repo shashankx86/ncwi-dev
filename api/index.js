@@ -63,7 +63,7 @@ const systemRouter = express.Router();
 // Endpoint to list all running services and sockets owned by the user
 systemRouter.get('/services', (req, res) => {
   // Execute both commands and wait for both to complete
-  executeCommand('systemctl --user list-units --type=service', (serviceError, serviceStdout) => {
+  executeCommand('systemctl --user list-units --type=service --state=running', (serviceError, serviceStdout) => {
     if (serviceError) {
       return res.status(500).json({ message: 'Error fetching services', error: serviceError });
     }
@@ -84,7 +84,7 @@ systemRouter.get('/services', (req, res) => {
 
 // Endpoint to start a service
 systemRouter.post('/services/start', (req, res) => {
-  const { service } = req.body;
+  const service = req.query.target;
   if (!service) {
     return res.status(400).json({ message: 'Service name is required' });
   }
@@ -99,7 +99,7 @@ systemRouter.post('/services/start', (req, res) => {
 
 // Endpoint to stop a service
 systemRouter.post('/services/stop', (req, res) => {
-  const { service } = req.body;
+  const service = req.query.target;
   if (!service) {
     return res.status(400).json({ message: 'Service name is required' });
   }
@@ -108,6 +108,21 @@ systemRouter.post('/services/stop', (req, res) => {
       res.status(500).json({ message: `Error stopping service ${service}`, error });
     } else {
       res.status(200).json({ message: `Service ${service} stopped successfully` });
+    }
+  });
+});
+
+// Endpoint to restart a service
+systemRouter.post('/services/restart', (req, res) => {
+  const service = req.query.target;
+  if (!service) {
+    return res.status(400).json({ message: 'Service name is required' });
+  }
+  executeCommand(`systemctl --user restart ${service}`, (error) => {
+    if (error) {
+      res.status(500).json({ message: `Error restarting service ${service}`, error });
+    } else {
+      res.status(200).json({ message: `Service ${service} restarted successfully` });
     }
   });
 });
