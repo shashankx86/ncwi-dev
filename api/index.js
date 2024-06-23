@@ -43,32 +43,42 @@ const executeCommand = (command, callback) => {
   });
 };
 
-// Helper function to parse services using regex
-const parseServices = (data) => {
-  const serviceRegex = /^\s*(\S+\.service)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
+// Helper function to parse services or sockets using regex
+const parseUnits = (data) => {
+  const unitRegex = /^\s*(\S+\.service|\S+\.socket)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
   let match;
-  const services = [];
+  const units = [];
 
-  while ((match = serviceRegex.exec(data)) !== null) {
+  while ((match = unitRegex.exec(data)) !== null) {
     const [ , UNIT, LOAD, ACTIVE, SUB, DESCRIPTION ] = match;
-    services.push({ UNIT, LOAD, ACTIVE, SUB, DESCRIPTION });
+    units.push({ UNIT, LOAD, ACTIVE, SUB, DESCRIPTION });
   }
 
-  return services;
+  return units;
 };
 
 // Create a router for systemd related routes
 const systemRouter = express.Router();
 
-// Endpoint to list all running services owned by the user
+// Endpoint to list all running services and sockets owned by the user
 systemRouter.get('/services', (req, res) => {
-  executeCommand('systemctl --user list-units --type=service --state=running', (error, stdout) => {
-    if (error) {
-      res.status(500).json({ message: 'Error fetching services', error });
-    } else {
-      const services = parseServices(stdout);
-      res.status(200).json({ services });
+  // Execute both commands and wait for both to complete
+  executeCommand('systemctl --user list-units --type=service --state=running', (serviceError, serviceStdout) => {
+    if (serviceError) {
+      return res.status(500).json({ message: 'Error fetching services', error: serviceError });
     }
+
+    const services = parseUnits(serviceStdout);
+
+    executeCommand('systemctl --user list-units --type=socket', (socketError, socketStdout) => {
+      if (socketError) {
+        return res.status(500).json({ message: 'Error fetching sockets', error: socketError });
+      }
+
+      const sockets = parseUnits(socketStdout);
+
+      res.status(200).json({ services, sockets });
+    });
   });
 });
 
