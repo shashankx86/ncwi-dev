@@ -15,6 +15,7 @@ export default {
     return {
       terminal: null,
       fitAddon: null,
+      socket: null,
     };
   },
   mounted() {
@@ -24,14 +25,24 @@ export default {
     this.terminal.open(this.$refs.terminal);
     this.fitAddon.fit();
 
-    // Simulating terminal interaction
-    this.terminal.writeln('Welcome to the xterm.js terminal');
+    // Connect to the WebSocket server
+    this.socket = new WebSocket('ws://localhost:5490');
+
+    this.socket.onmessage = (event) => {
+      this.terminal.write(event.data);
+    };
+
+    this.terminal.onData((data) => {
+      this.socket.send(data);
+    });
+
+    this.terminal.writeln('Connected to reverse shell');
   },
-  methods: {
-    openTerminal() {
-      this.terminal.open(this.$refs.terminal);
-      this.fitAddon.fit();
-    },
-  },
+  beforeDestroy() {
+    if (this.socket) {
+      this.socket.close();
+    }
+  }
 };
 </script>
+
