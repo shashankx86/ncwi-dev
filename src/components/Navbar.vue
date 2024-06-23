@@ -2,7 +2,7 @@
   <nav class="navbar">
     <div class="navbar-left">
       <button class="navbar-item">Services</button>
-      <button class="navbar-item">Terminal</button>
+      <button class="navbar-item" @click="openTerminal">Terminal</button>
       <button class="navbar-item">Settings</button>
     </div>
     <div class="navbar-right">
@@ -16,5 +16,10 @@
 <script>
 export default {
   name: 'Navbar',
-}
+  methods: {
+    openTerminal() {
+      this.$emit('open-terminal');
+    },
+  },
+};
 </script>
