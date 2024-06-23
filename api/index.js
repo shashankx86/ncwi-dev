@@ -63,7 +63,7 @@ const systemRouter = express.Router();
 // Endpoint to list all running services and sockets owned by the user
 systemRouter.get('/services', (req, res) => {
   // Execute both commands and wait for both to complete
-  executeCommand('systemctl --user list-units --type=service --state=running', (serviceError, serviceStdout) => {
+  executeCommand('systemctl --user list-units --type=service', (serviceError, serviceStdout) => {
     if (serviceError) {
       return res.status(500).json({ message: 'Error fetching services', error: serviceError });
     }
