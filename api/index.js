@@ -43,13 +43,27 @@ const executeCommand = (command, callback) => {
   });
 };
 
+// Helper function to parse services using regex
+const parseServices = (data) => {
+  const serviceRegex = /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
+  let match;
+  const services = [];
+  
+  while ((match = serviceRegex.exec(data)) !== null) {
+    const [ , UNIT, LOAD, ACTIVE, SUB, DESCRIPTION ] = match;
+    services.push({ UNIT, LOAD, ACTIVE, SUB, DESCRIPTION });
+  }
+
+  return services;
+};
+
 // Endpoint to list all running services owned by the user
 app.get('/services', (req, res) => {
   executeCommand('systemctl --user list-units --type=service --state=running', (error, stdout) => {
     if (error) {
       res.status(500).json({ message: 'Error fetching services', error });
     } else {
-      const services = stdout.split('\n').filter(line => line).map(line => line.split(/\s+/)[0]);
+      const services = parseServices(stdout);
       res.status(200).json({ services });
     }
   });
