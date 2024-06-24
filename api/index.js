@@ -319,6 +319,27 @@ const getMemoryUsage = () => {
   return { used: used.toFixed(2), total: total.toFixed(2) };
 };
 
+const nestRouter = express.Router();
+
+// Endpoint to get disk usage
+nestRouter.get('/disk', (req, res) => {
+  getDiskUsage((err, usage) => {
+    if (err) {
+      return res.status(500).json({ message: 'Error fetching disk usage', error: err.message });
+    }
+    res.status(200).json({ used: `${usage.used} GB`, total: `${usage.total} GB` });
+  });
+});
+
+// Endpoint to get memory usage
+nestRouter.get('/ram', (req, res) => {
+  const usage = getMemoryUsage();
+  res.status(200).json({ used: `${usage.used} GB`, total: `${usage.total} GB` });
+});
+
+// Mount the nest related routes under /nest
+app.use('/nest', nestRouter);
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
