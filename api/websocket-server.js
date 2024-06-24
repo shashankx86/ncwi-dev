@@ -1,21 +1,24 @@
 const WebSocket = require('ws');
-const { spawn } = require('child_process');
+const pty = require('node-pty');
 
 const wss = new WebSocket.Server({ port: 5490 });
 
 wss.on('connection', (ws) => {
-  const shell = spawn('sh');
-
-  shell.stdout.on('data', (data) => {
-    ws.send(data.toString());
+  // Spawn a shell with a PTY
+  const shell = pty.spawn('sh', [], {
+    name: 'xterm-color',
+    cols: 80,
+    rows: 24,
+    cwd: process.env.HOME,
+    env: process.env
   });
 
-  shell.stderr.on('data', (data) => {
-    ws.send(data.toString());
+  shell.on('data', (data) => {
+    ws.send(data);
   });
 
   ws.on('message', (message) => {
-    shell.stdin.write(message + '\n');
+    shell.write(message);
   });
 
   ws.on('close', () => {
@@ -23,4 +26,4 @@ wss.on('connection', (ws) => {
   });
 });
 
-console.log('WebSocket server is running on ws://localhost:8080');
+console.log('WebSocket server is running on ws://localhost:5490');

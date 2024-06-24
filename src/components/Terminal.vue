@@ -16,11 +16,20 @@ export default {
       terminal: null,
       fitAddon: null,
       socket: null,
-      currentCommand: '', // Store the current command being typed
     };
   },
   mounted() {
-    this.terminal = new Terminal();
+    this.terminal = new Terminal({
+      cursorBlink: true,
+      rows: 24,
+      cols: 80,
+      fontFamily: 'monospace',
+      fontSize: 14,
+      theme: {
+        background: '#1a1a1a',
+        foreground: '#ffffff',
+      },
+    });
     this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.open(this.$refs.terminal);
@@ -30,11 +39,15 @@ export default {
     this.socket = new WebSocket('ws://localhost:5490');
 
     this.socket.onmessage = (event) => {
-      this.terminal.write(event.data);
+      this.terminal.write(event.data.replace(/\n/g, '\r\n'));
     };
 
     this.terminal.onData((data) => {
-      this.handleInput(data);
+      this.socket.send(data);
+    });
+
+    this.terminal.onResize(({ cols, rows }) => {
+      this.socket.send(JSON.stringify({ event: 'resize', cols, rows }));
     });
 
     this.terminal.writeln('Connected to reverse shell');
@@ -44,26 +57,20 @@ export default {
       this.socket.close();
     }
   },
-  methods: {
-    handleInput(data) {
-      switch (data) {
-        case '\r': // Enter key
-          this.socket.send(this.currentCommand);
-          this.currentCommand = '';
-          this.terminal.write('\r\n');
-          break;
-        case '\u007F': // Backspace key
-          if (this.currentCommand.length > 0) {
-            this.currentCommand = this.currentCommand.slice(0, -1);
-            this.terminal.write('\b \b');
-          }
-          break;
-        default:
-          this.currentCommand += data;
-          this.terminal.write(data);
-          break;
-      }
-    },
-  },
 };
 </script>
+
+<style scoped>
+.terminal-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #1a1a1a;
+}
+.terminal {
+  width: 100%;
+  height: 100%;
+}
+</style>
