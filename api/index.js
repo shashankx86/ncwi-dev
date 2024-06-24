@@ -164,6 +164,105 @@ systemRouter.get('/read', (req, res) => {
 // Mount the systemd related routes under /system
 app.use('/system', systemRouter);
 
+// Create a router for Docker related routes
+const dockerRouter = express.Router();
+
+// Endpoint to list running Docker containers
+dockerRouter.get('/running', (req, res) => {
+  executeCommand('docker ps', (error, stdout) => {
+    if (error) {
+      return res.status(500).json({ message: 'Error fetching running containers', error });
+    }
+
+    const lines = stdout.trim().split('\n');
+    const headers = lines[0].split(/\s{2,}/);
+    const containers = lines.slice(1).map(line => {
+      const columns = line.split(/\s{2,}/);
+      return headers.reduce((container, header, index) => {
+        container[header.replace(/ /g, '_')] = columns[index];
+        return container;
+      }, {});
+    });
+
+    res.status(200).json({ containers });
+  });
+});
+
+// Endpoint to start a Docker container
+dockerRouter.post('/start', (req, res) => {
+  const { targetid, targetname } = req.query;
+  if (!targetid && !targetname) {
+    return res.status(400).json({ message: 'Either targetid or targetname is required' });
+  }
+
+  const target = targetid || targetname;
+  executeCommand(`docker start ${target}`, (error) => {
+    if (error) {
+      res.status(500).json({ message: `Error starting container ${target}`, error });
+    } else {
+      res.status(200).json({ message: `Container ${target} started successfully` });
+    }
+  });
+});
+
+// Endpoint to stop a Docker container
+dockerRouter.post('/stop', (req, res) => {
+  const { targetid, targetname } = req.query;
+  if (!targetid && !targetname) {
+    return res.status(400).json({ message: 'Either targetid or targetname is required' });
+  }
+
+  const target = targetid || targetname;
+  executeCommand(`docker stop ${target}`, (error) => {
+    if (error) {
+      res.status(500).json({ message: `Error stopping container ${target}`, error });
+    } else {
+      res.status(200).json({ message: `Container ${target} stopped successfully` });
+    }
+  });
+});
+
+// Endpoint to restart a Docker container
+dockerRouter.post('/restart', (req, res) => {
+  const { targetid, targetname } = req.query;
+  if (!targetid && !targetname) {
+    return res.status(400).json({ message: 'Either targetid or targetname is required' });
+  }
+
+  const target = targetid || targetname;
+  executeCommand(`docker restart ${target}`, (error) => {
+    if (error) {
+      res.status(500).json({ message: `Error restarting container ${target}`, error });
+    } else {
+      res.status(200).json({ message: `Container ${target} restarted successfully` });
+    }
+  });
+});
+
+// Endpoint to list Docker images
+dockerRouter.get('/image/ls', (req, res) => {
+  executeCommand('docker image ls', (error, stdout) => {
+    if (error) {
+      return res.status(500).json({ message: 'Error fetching Docker images', error });
+    }
+
+    const lines = stdout.trim().split('\n');
+    const headers = lines[0].split(/\s{2,}/);
+    const images = lines.slice(1).map(line => {
+      const columns = line.split(/\s{2,}/);
+      return headers.reduce((image, header, index) => {
+        image[header.replace(/ /g, '_')] = columns[index];
+        return image;
+      }, {});
+    });
+
+    res.status(200).json({ images });
+  });
+});
+
+// Mount the Docker related routes under /docker
+app.use('/docker', dockerRouter);
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
