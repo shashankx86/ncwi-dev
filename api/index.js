@@ -161,6 +161,23 @@ systemRouter.get('/read', (req, res) => {
   }
 });
 
+// Endpoint to schedule a task
+systemRouter.post('/at', (req, res) => {
+  const { time, command } = req.query;
+  if (!time || !command) {
+    return res.status(400).json({ message: 'Both time and command are required' });
+  }
+
+  const atCommand = `echo "${command}" | at ${time}`;
+  executeCommand(atCommand, (error, stdout, stderr) => {
+    if (error) {
+      res.status(500).json({ message: `Error scheduling task at ${time}`, error: stderr || error.message });
+    } else {
+      res.status(200).json({ message: `Task scheduled at ${time}`, output: stdout });
+    }
+  });
+});
+
 // Mount the systemd related routes under /system
 app.use('/system', systemRouter);
 
