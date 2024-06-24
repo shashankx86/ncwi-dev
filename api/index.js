@@ -260,6 +260,23 @@ dockerRouter.get('/image/ls', (req, res) => {
   });
 });
 
+// Endpoint to remove a Docker image
+dockerRouter.delete('/image/rm', (req, res) => {
+  const { targetid, tokill } = req.query;
+  if (!targetid) {
+    return res.status(400).json({ message: 'targetid is required' });
+  }
+
+  const forceFlag = tokill === 'true' ? '--force' : '';
+  executeCommand(`docker image rm ${targetid} ${forceFlag}`, (error, stdout, stderr) => {
+    if (error) {
+      return res.status(500).json({ message: `Error removing image ${targetid}`, error: stderr || error.message });
+    }
+
+    res.status(200).json({ message: `Image ${targetid} removed successfully` });
+  });
+});
+
 // Mount the Docker related routes under /docker
 app.use('/docker', dockerRouter);
 
