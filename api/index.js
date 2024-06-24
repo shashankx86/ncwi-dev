@@ -17,10 +17,7 @@ app.use(bodyParser.json());
 // // Login endpoint
 // app.post('/login', (req, res) => {
 //   const { username, password } = req.body;
-//   if (
-//     username === credentials.username &&
-//     password === credentials.password
-//   ) {
+//   if (username === credentials.username && password === credentials.password) {
 //     res.status(200).json({ message: 'Login successful' });
 //   } else {
 //     res.status(401).json({ message: 'Invalid username or password' });
@@ -84,6 +81,109 @@ dockerRouter.get('/running', (req, res) => {
   });
 });
 
+// Helper function to get container ID by name
+const getContainerIdByName = (name, callback) => {
+  executeCommand('docker ps -a --format "{{.ID}} {{.Names}}"', (error, stdout) => {
+    if (error) {
+      callback(error, null);
+    } else {
+      const lines = stdout.split('\n');
+      for (let line of lines) {
+        const [id, containerName] = line.split(' ');
+        if (containerName === name) {
+          callback(null, id);
+          return;
+        }
+      }
+      callback(new Error('Container not found'), null);
+    }
+  });
+};
+
+// Endpoint to start a Docker container
+dockerRouter.post('/start', (req, res) => {
+  const { targetid, targetname } = req.query;
+  if (!targetid && !targetname) {
+    return res.status(400).json({ message: 'Either targetid or targetname is required' });
+  }
+
+  const startContainer = (containerId) => {
+    executeCommand(`docker start ${containerId}`, (error, stdout) => {
+      if (error) {
+        return res.status(500).json({ message: `Error starting container ${containerId}`, error });
+      }
+      res.status(200).json({ message: `Container ${containerId} started successfully`, output: stdout });
+    });
+  };
+
+  if (targetid) {
+    startContainer(targetid);
+  } else if (targetname) {
+    getContainerIdByName(targetname, (error, containerId) => {
+      if (error) {
+        return res.status(500).json({ message: `Error finding container with name ${targetname}`, error });
+      }
+      startContainer(containerId);
+    });
+  }
+});
+
+// Endpoint to stop a Docker container
+dockerRouter.post('/stop', (req, res) => {
+  const { targetid, targetname } = req.query;
+  if (!targetid && !targetname) {
+    return res.status(400).json({ message: 'Either targetid or targetname is required' });
+  }
+
+  const stopContainer = (containerId) => {
+    executeCommand(`docker stop ${containerId}`, (error, stdout) => {
+      if (error) {
+        return res.status(500).json({ message: `Error stopping container ${containerId}`, error });
+      }
+      res.status(200).json({ message: `Container ${containerId} stopped successfully`, output: stdout });
+    });
+  };
+
+  if (targetid) {
+    stopContainer(targetid);
+  } else if (targetname) {
+    getContainerIdByName(targetname, (error, containerId) => {
+      if (error) {
+        return res.status(500).json({ message: `Error finding container with name ${targetname}`, error });
+      }
+      stopContainer(containerId);
+    });
+  }
+});
+
+// Endpoint to restart a Docker container
+dockerRouter.post('/restart', (req, res) => {
+  const { targetid, targetname } = req.query;
+  if (!targetid && !targetname) {
+    return res.status(400).json({ message: 'Either targetid or targetname is required' });
+  }
+
+  const restartContainer = (containerId) => {
+    executeCommand(`docker restart ${containerId}`, (error, stdout) => {
+      if (error) {
+        return res.status(500).json({ message: `Error restarting container ${containerId}`, error });
+      }
+      res.status(200).json({ message: `Container ${containerId} restarted successfully`, output: stdout });
+    });
+  };
+
+  if (targetid) {
+    restartContainer(targetid);
+  } else if (targetname) {
+    getContainerIdByName(targetname, (error, containerId) => {
+      if (error) {
+        return res.status(500).json({ message: `Error finding container with name ${targetname}`, error });
+      }
+      restartContainer(containerId);
+    });
+  }
+});
+
 // Mount the Docker-related routes under /docker
 app.use('/docker', dockerRouter);
 
@@ -94,7 +194,7 @@ const parseUnits = (data) => {
   const units = [];
 
   while ((match = unitRegex.exec(data)) !== null) {
-    const [ , UNIT, LOAD, ACTIVE, SUB, DESCRIPTION ] = match;
+    const [, UNIT, LOAD, ACTIVE, SUB, DESCRIPTION] = match;
     units.push({ UNIT, LOAD, ACTIVE, SUB, DESCRIPTION });
   }
 
