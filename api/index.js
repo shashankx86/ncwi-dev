@@ -271,6 +271,23 @@ systemRouter.post('/services/restart', (req, res) => {
   });
 });
 
+// Endpoint to write a file
+systemRouter.post('/write', (req, res) => {
+  const { filename, filepath, filecontent } = req.query;
+  if (!filename || !filepath || !filecontent) {
+    return res.status(400).json({ message: 'Filename, filepath, and filecontent are required' });
+  }
+
+  const fullPath = `${filepath}/${filename}`;
+  
+  try {
+    fs.writeFileSync(fullPath, filecontent, 'utf8');
+    res.status(200).json({ message: `File ${filename} saved successfully at ${filepath}` });
+  } catch (error) {
+    res.status(500).json({ message: `Error saving file ${filename} at ${filepath}`, error });
+  }
+});
+
 // Mount the systemd related routes under /system
 app.use('/system', systemRouter);
 
