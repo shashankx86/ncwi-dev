@@ -17,7 +17,10 @@ app.use(bodyParser.json());
 // // Login endpoint
 // app.post('/login', (req, res) => {
 //   const { username, password } = req.body;
-//   if (username === credentials.username && password === credentials.password) {
+//   if (
+//     username === credentials.username &&
+//     password === credentials.password
+//   ) {
 //     res.status(200).json({ message: 'Login successful' });
 //   } else {
 //     res.status(401).json({ message: 'Invalid username or password' });
@@ -40,161 +43,14 @@ const executeCommand = (command, callback) => {
   });
 };
 
-// Helper function to parse docker ps output using regex
-const parseDockerPs = (data) => {
-  const lines = data.split('\n').filter(line => line.trim() !== '');
-  const headers = lines[0].split(/\s{2,}/);
-  const containers = [];
-
-  const regex = /^(\S+)\s+(\S+)\s+(.+?)\s{3,}(.+?)\s{3,}(.+?)\s{3,}(.+?)\s{3,}(.+)$/;
-
-  for (let i = 1; i < lines.length; i++) {
-    const match = lines[i].match(regex);
-    if (match) {
-      containers.push({
-        CONTAINER_ID: match[1],
-        IMAGE: match[2],
-        COMMAND: match[3],
-        CREATED: match[4],
-        STATUS: match[5],
-        PORTS: match[6],
-        NAMES: match[7],
-      });
-    }
-  }
-
-  return containers;
-};
-
-// Create a router for Docker-related routes
-const dockerRouter = express.Router();
-
-// Endpoint to list all running Docker containers
-dockerRouter.get('/running', (req, res) => {
-  executeCommand('docker ps', (error, stdout) => {
-    if (error) {
-      return res.status(500).json({ message: 'Error fetching Docker containers', error });
-    }
-
-    const containers = parseDockerPs(stdout);
-    res.status(200).json({ containers });
-  });
-});
-
-// Helper function to get container ID by name
-const getContainerIdByName = (name, callback) => {
-  executeCommand('docker ps -a --format "{{.ID}} {{.Names}}"', (error, stdout) => {
-    if (error) {
-      callback(error, null);
-    } else {
-      const lines = stdout.split('\n');
-      for (let line of lines) {
-        const [id, containerName] = line.split(' ');
-        if (containerName === name) {
-          callback(null, id);
-          return;
-        }
-      }
-      callback(new Error('Container not found'), null);
-    }
-  });
-};
-
-// Endpoint to start a Docker container
-dockerRouter.post('/start', (req, res) => {
-  const { targetid, targetname } = req.query;
-  if (!targetid && !targetname) {
-    return res.status(400).json({ message: 'Either targetid or targetname is required' });
-  }
-
-  const startContainer = (containerId) => {
-    executeCommand(`docker start ${containerId}`, (error, stdout) => {
-      if (error) {
-        return res.status(500).json({ message: `Error starting container ${containerId}`, error });
-      }
-      res.status(200).json({ message: `Container ${containerId} started successfully`, output: stdout });
-    });
-  };
-
-  if (targetid) {
-    startContainer(targetid);
-  } else if (targetname) {
-    getContainerIdByName(targetname, (error, containerId) => {
-      if (error) {
-        return res.status(500).json({ message: `Error finding container with name ${targetname}`, error });
-      }
-      startContainer(containerId);
-    });
-  }
-});
-
-// Endpoint to stop a Docker container
-dockerRouter.post('/stop', (req, res) => {
-  const { targetid, targetname } = req.query;
-  if (!targetid && !targetname) {
-    return res.status(400).json({ message: 'Either targetid or targetname is required' });
-  }
-
-  const stopContainer = (containerId) => {
-    executeCommand(`docker stop ${containerId}`, (error, stdout) => {
-      if (error) {
-        return res.status(500).json({ message: `Error stopping container ${containerId}`, error });
-      }
-      res.status(200).json({ message: `Container ${containerId} stopped successfully`, output: stdout });
-    });
-  };
-
-  if (targetid) {
-    stopContainer(targetid);
-  } else if (targetname) {
-    getContainerIdByName(targetname, (error, containerId) => {
-      if (error) {
-        return res.status(500).json({ message: `Error finding container with name ${targetname}`, error });
-      }
-      stopContainer(containerId);
-    });
-  }
-});
-
-// Endpoint to restart a Docker container
-dockerRouter.post('/restart', (req, res) => {
-  const { targetid, targetname } = req.query;
-  if (!targetid && !targetname) {
-    return res.status(400).json({ message: 'Either targetid or targetname is required' });
-  }
-
-  const restartContainer = (containerId) => {
-    executeCommand(`docker restart ${containerId}`, (error, stdout) => {
-      if (error) {
-        return res.status(500).json({ message: `Error restarting container ${containerId}`, error });
-      }
-      res.status(200).json({ message: `Container ${containerId} restarted successfully`, output: stdout });
-    });
-  };
-
-  if (targetid) {
-    restartContainer(targetid);
-  } else if (targetname) {
-    getContainerIdByName(targetname, (error, containerId) => {
-      if (error) {
-        return res.status(500).json({ message: `Error finding container with name ${targetname}`, error });
-      }
-      restartContainer(containerId);
-    });
-  }
-});
-
-// Mount the Docker-related routes under /docker
-app.use('/docker', dockerRouter);
-
-// Existing systemd routes
+// Helper function to parse services or sockets using regex
 const parseUnits = (data) => {
   const unitRegex = /^\s*(\S+\.service|\S+\.socket)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
   let match;
   const units = [];
 
   while ((match = unitRegex.exec(data)) !== null) {
-    const [, UNIT, LOAD, ACTIVE, SUB, DESCRIPTION] = match;
+    const [ , UNIT, LOAD, ACTIVE, SUB, DESCRIPTION ] = match;
     units.push({ UNIT, LOAD, ACTIVE, SUB, DESCRIPTION });
   }
 
@@ -285,6 +141,23 @@ systemRouter.post('/write', (req, res) => {
     res.status(200).json({ message: `File ${filename} saved successfully at ${filepath}` });
   } catch (error) {
     res.status(500).json({ message: `Error saving file ${filename} at ${filepath}`, error });
+  }
+});
+
+// Endpoint to read a file
+systemRouter.get('/read', (req, res) => {
+  const { filename, filepath } = req.query;
+  if (!filename || !filepath) {
+    return res.status(400).json({ message: 'Filename and filepath are required' });
+  }
+
+  const fullPath = `${filepath}/${filename}`;
+
+  try {
+    const fileContent = fs.readFileSync(fullPath, 'utf8');
+    res.status(200).json({ content: fileContent });
+  } catch (error) {
+    res.status(500).json({ message: `Error reading file ${filename} at ${filepath}`, error });
   }
 });
 
