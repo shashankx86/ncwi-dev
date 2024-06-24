@@ -4,6 +4,8 @@ const cors = require('cors');
 const fs = require('fs');
 const { exec } = require('child_process');
 require('dotenv').config();
+const os = require('os');
+const disk = require('diskusage');
 
 const app = express();
 const PORT = process.env.PORT || 5490;
@@ -296,6 +298,26 @@ dockerRouter.delete('/image/rm', (req, res) => {
 
 // Mount the Docker related routes under /docker
 app.use('/docker', dockerRouter);
+
+// Function to get disk usage
+const getDiskUsage = (callback) => {
+  disk.check('/', (err, info) => {
+    if (err) {
+      return callback(err, null);
+    }
+    const used = (info.total - info.free) / (1024 ** 3); // Convert bytes to GB
+    const total = info.total / (1024 ** 3); // Convert bytes to GB
+    callback(null, { used: used.toFixed(2), total: total.toFixed(2) });
+  });
+};
+
+// Function to get memory usage
+const getMemoryUsage = () => {
+  const total = os.totalmem() / (1024 ** 3); // Convert bytes to GB
+  const free = os.freemem() / (1024 ** 3); // Convert bytes to GB
+  const used = total - free;
+  return { used: used.toFixed(2), total: total.toFixed(2) };
+};
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
