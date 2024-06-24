@@ -12,7 +12,7 @@ const VERSION = '0.0.1';
 app.use(cors());
 app.use(bodyParser.json());
 
-// const credentials = JSON.parse(fs.readFileSync('./credentials.json', 'utf8'));
+// const credentials = JSON.parse(fs.readFileSync('credentials.json', 'utf8'));
 
 // // Login endpoint
 // app.post('/login', (req, res) => {
@@ -49,7 +49,7 @@ const parseDockerPs = (data) => {
   const headers = lines[0].split(/\s{2,}/);
   const containers = [];
 
-  const regex = /(\S+)\s+(\S+)\s+(\"[^\"]*\"|\S+)\s+(.*?)(?=\s{2,})\s{2,}(.*?)\s{2,}(.*?)\s{2,}(.*?)$/;
+  const regex = /^(\S+)\s+(\S+)\s+(.+?)\s{3,}(.+?)\s{3,}(.+?)\s{3,}(.+?)\s{3,}(.+)$/;
 
   for (let i = 1; i < lines.length; i++) {
     const match = lines[i].match(regex);
@@ -87,7 +87,7 @@ dockerRouter.get('/running', (req, res) => {
 // Mount the Docker-related routes under /docker
 app.use('/docker', dockerRouter);
 
-// Systemd routes
+// Existing systemd routes
 const parseUnits = (data) => {
   const unitRegex = /^\s*(\S+\.service|\S+\.socket)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/gm;
   let match;
