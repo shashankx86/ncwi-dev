@@ -20,7 +20,8 @@ export default {
       historyIndex: 0,
       currentCommand: '',
       cursorPosition: 0,
-      prompt: '$ '
+      prompt: '$ ',
+      isNewLine: true
     };
   },
   mounted() {
@@ -40,6 +41,9 @@ export default {
 
     this.socket.onmessage = (event) => {
       this.terminal.write(event.data);
+      if (event.data.endsWith('\n') || event.data.endsWith('\r')) {
+        this.printPrompt();
+      }
     };
 
     this.terminal.onData(this.handleInput);
@@ -59,7 +63,7 @@ export default {
           if (this.cursorPosition > 0) {
             this.currentCommand = this.currentCommand.slice(0, this.cursorPosition - 1) + this.currentCommand.slice(this.cursorPosition);
             this.cursorPosition--;
-            this.updateTerminalDisplay();
+            this.terminal.write('\b \b');
           }
           break;
         case '\u001B[A': // Up arrow key
@@ -89,11 +93,11 @@ export default {
           break;
       }
     },
-    updateTerminalDisplay() {
-      this.terminal.write('\x1b[2K\r' + this.prompt + this.currentCommand.slice(0, this.cursorPosition) + '\x1b[7m' + (this.currentCommand[this.cursorPosition] || ' ') + '\x1b[27m' + this.currentCommand.slice(this.cursorPosition + 1) + '\x1b[' + (this.prompt.length + this.cursorPosition + 1) + 'G');
-    },
     executeCommand() {
-      this.terminal.write('\r\n');
+      if (this.isNewLine) {
+        this.terminal.write('\r\n');
+        this.isNewLine = false;
+      }
       if (this.currentCommand.trim()) {
         this.commandHistory.push(this.currentCommand);
         this.historyIndex = this.commandHistory.length;
@@ -101,7 +105,6 @@ export default {
       }
       this.currentCommand = '';
       this.cursorPosition = 0;
-      this.printPrompt();
     },
     previousCommand() {
       if (this.historyIndex > 0) {
@@ -124,8 +127,12 @@ export default {
         this.updateTerminalDisplay();
       }
     },
+    updateTerminalDisplay() {
+      this.terminal.write('\x1b[2K\r' + this.prompt + this.currentCommand.slice(0, this.cursorPosition) + '\x1b[7m' + (this.currentCommand[this.cursorPosition] || ' ') + '\x1b[27m' + this.currentCommand.slice(this.cursorPosition + 1) + '\x1b[' + (this.prompt.length + this.cursorPosition + 1) + 'G');
+    },
     printPrompt() {
-      this.terminal.write(this.prompt);
+      this.terminal.write('\r\n' + this.prompt);
+      this.isNewLine = true;
     }
   }
 };
@@ -135,10 +142,14 @@ export default {
 .terminal-container {
   width: 100%;
   height: 100%;
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
 }
 
 .terminal {
   width: 100%;
   height: 100%;
+  text-align: left;
 }
 </style>
