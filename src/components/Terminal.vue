@@ -19,7 +19,8 @@ export default {
       commandHistory: [],
       historyIndex: 0,
       currentCommand: '',
-      cursorPosition: 0
+      cursorPosition: 0,
+      prompt: '$ '
     };
   },
   mounted() {
@@ -32,13 +33,16 @@ export default {
     // Connect to the WebSocket server
     this.socket = new WebSocket('ws://localhost:5490');
 
+    this.socket.onopen = () => {
+      this.terminal.writeln('Connected to reverse shell');
+      this.printPrompt();
+    };
+
     this.socket.onmessage = (event) => {
       this.terminal.write(event.data);
     };
 
     this.terminal.onData(this.handleInput);
-
-    this.terminal.writeln('Connected to reverse shell');
   },
   beforeDestroy() {
     if (this.socket) {
@@ -55,7 +59,6 @@ export default {
           if (this.cursorPosition > 0) {
             this.currentCommand = this.currentCommand.slice(0, this.cursorPosition - 1) + this.currentCommand.slice(this.cursorPosition);
             this.cursorPosition--;
-            this.terminal.write('\b \b');
             this.updateTerminalDisplay();
           }
           break;
@@ -77,12 +80,6 @@ export default {
             this.terminal.write('\x1b[D');
           }
           break;
-        case '\u001B[3~': // Delete key
-          if (this.cursorPosition < this.currentCommand.length) {
-            this.currentCommand = this.currentCommand.slice(0, this.cursorPosition) + this.currentCommand.slice(this.cursorPosition + 1);
-            this.updateTerminalDisplay();
-          }
-          break;
         default:
           if (data >= ' ' && data <= '~') { // Only process printable characters
             this.currentCommand = this.currentCommand.slice(0, this.cursorPosition) + data + this.currentCommand.slice(this.cursorPosition);
@@ -93,17 +90,18 @@ export default {
       }
     },
     updateTerminalDisplay() {
-      this.terminal.write('\x1b[2K\r' + this.currentCommand.slice(0, this.cursorPosition) + '\x1b[7m' + (this.currentCommand[this.cursorPosition] || ' ') + '\x1b[27m' + this.currentCommand.slice(this.cursorPosition + 1) + '\x1b[' + (this.cursorPosition + 1) + 'G');
+      this.terminal.write('\x1b[2K\r' + this.prompt + this.currentCommand.slice(0, this.cursorPosition) + '\x1b[7m' + (this.currentCommand[this.cursorPosition] || ' ') + '\x1b[27m' + this.currentCommand.slice(this.cursorPosition + 1) + '\x1b[' + (this.prompt.length + this.cursorPosition + 1) + 'G');
     },
     executeCommand() {
       this.terminal.write('\r\n');
       if (this.currentCommand.trim()) {
         this.commandHistory.push(this.currentCommand);
         this.historyIndex = this.commandHistory.length;
-        this.socket.send(this.currentCommand);
+        this.socket.send(this.currentCommand + '\n');
       }
       this.currentCommand = '';
       this.cursorPosition = 0;
+      this.printPrompt();
     },
     previousCommand() {
       if (this.historyIndex > 0) {
@@ -125,6 +123,9 @@ export default {
         this.cursorPosition = 0;
         this.updateTerminalDisplay();
       }
+    },
+    printPrompt() {
+      this.terminal.write(this.prompt);
     }
   }
 };
