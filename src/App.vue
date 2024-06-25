@@ -2,7 +2,6 @@
   <div id="app">
     <Navbar @open-terminal="showTerminal = !showTerminal" />
     <div class="content">
-      <h1>NCWI</h1>
       <Terminal v-if="showTerminal" />
     </div>
   </div>
