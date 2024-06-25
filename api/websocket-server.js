@@ -4,8 +4,8 @@ const pty = require('node-pty');
 const wss = new WebSocket.Server({ port: 5490 });
 
 wss.on('connection', (ws) => {
-  // Spawn a shell with pty
-  const shell = pty.spawn('sh', [], {
+  // Spawn a bash shell with pty
+  const shell = pty.spawn('bash', [], {
     name: 'xterm-color',
     cols: 80,
     rows: 24,
