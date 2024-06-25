@@ -1,4 +1,5 @@
 const express = require('express');
+const session = require('express-session');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const fs = require('fs');
@@ -10,29 +11,48 @@ const disk = require('diskusage');
 const app = express();
 const PORT = process.env.PORT || 5491;
 const VERSION = '0.0.1';
+const USERNAME = process.env.USERNAME;
+const PASSWORD = process.env.PASSWORD;
 
 app.use(cors());
 app.use(bodyParser.json());
+app.use(session({
+  secret: 'secret-key',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false, maxAge: 60000 }
+}));
 
-// const credentials = JSON.parse(fs.readFileSync('credentials.json', 'utf8'));
+// Login endpoint
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === USERNAME && password === PASSWORD) {
+    req.session.user = username;
+    res.status(200).json({ message: 'Login successful', sessionId: req.session.id });
+  } else {
+    res.status(401).json({ message: 'Invalid username or password' });
+  }
+});
 
-// // Login endpoint
-// app.post('/login', (req, res) => {
-//   const { username, password } = req.body;
-//   if (
-//     username === credentials.username &&
-//     password === credentials.password
-//   ) {
-//     res.status(200).json({ message: 'Login successful' });
-//   } else {
-//     res.status(401).json({ message: 'Invalid username or password' });
-//   }
-// });
+// Middleware to protect routes
+const isAuthenticated = (req, res, next) => {
+  if (req.session.user) {
+    next();
+  } else {
+    res.status(401).json({ message: 'Unauthorized' });
+  }
+};
 
-// Version endpoint
-app.get('/version', (req, res) => {
+// Version endpoint (protected)
+app.get('/version', isAuthenticated, (req, res) => {
   res.status(200).json({ version: VERSION });
 });
+
+// Create a router for systemd related routes
+const systemRouter = express.Router();
+
+systemRouter.use(isAuthenticated);
+
 
 // Helper function to execute shell commands
 const executeCommand = (command, callback) => {
@@ -58,9 +78,6 @@ const parseUnits = (data) => {
 
   return units;
 };
-
-// Create a router for systemd related routes
-const systemRouter = express.Router();
 
 // Endpoint to list all running services and sockets owned by the user
 systemRouter.get('/services', (req, res) => {
