@@ -50,7 +50,7 @@ export default {
       this.fitAddon.fit();
 
       // Connect to the WebSocket server
-      this.socket = new WebSocket('ws://localhost:5490');
+      this.socket = new WebSocket('ws://localhost:5492');
 
       this.socket.onopen = () => {
         this.terminal.writeln('Connected to reverse shell');
