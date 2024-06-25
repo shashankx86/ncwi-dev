@@ -1,6 +1,14 @@
 <template>
-  <div class="terminal-container" ref="container" @dblclick="captureCursor">
+  <div class="terminal-container" ref="container" @dblclick="captureCursor" @contextmenu.prevent="showContextMenu">
     <div ref="terminal" class="terminal"></div>
+    <ul v-if="contextMenuVisible" :style="{ top: `${contextMenuY}px`, left: `${contextMenuX}px` }" class="context-menu">
+      <li @click="copyText">Copy</li>
+      <li @click="pasteText">Paste</li>
+      <li @click="cutText">Cut</li>
+      <li @click="restartShell">Restart</li>
+      <li @click="reconnectShell">Reconnect</li>
+      <li @click="saveOutput">Save</li>
+    </ul>
   </div>
 </template>
 
@@ -17,6 +25,10 @@ export default {
       fitAddon: null,
       socket: null,
       cursorCaptured: false,
+      contextMenuVisible: false,
+      contextMenuX: 0,
+      contextMenuY: 0,
+      terminalOutput: ''
     };
   },
   mounted() {
@@ -49,6 +61,7 @@ export default {
           this.terminal.writeln('\r\nShell restarted');
         } else {
           this.terminal.write(event.data);
+          this.terminalOutput += event.data;
         }
       };
 
@@ -60,6 +73,7 @@ export default {
     },
     handleInput(data) {
       this.socket.send(data);
+      this.terminalOutput += data;
     },
     captureCursor() {
       if (!this.cursorCaptured) {
@@ -73,13 +87,61 @@ export default {
         this.cursorCaptured = false;
       }
     },
+    showContextMenu(event) {
+      this.contextMenuVisible = true;
+      this.contextMenuX = event.clientX;
+      this.contextMenuY = event.clientY;
+    },
+    hideContextMenu() {
+      this.contextMenuVisible = false;
+    },
+    copyText() {
+      navigator.clipboard.writeText(this.terminal.getSelection());
+      this.hideContextMenu();
+    },
+    pasteText() {
+      navigator.clipboard.readText().then(text => {
+        this.terminal.write(text);
+        this.socket.send(text);
+      });
+      this.hideContextMenu();
+    },
+    cutText() {
+      const selection = this.terminal.getSelection();
+      navigator.clipboard.writeText(selection);
+      this.terminal.write('\b \b'.repeat(selection.length));
+      this.hideContextMenu();
+    },
+    restartShell() {
+      this.socket.send('exit\n');
+      setTimeout(() => {
+        this.socket.close();
+        this.initializeTerminal();
+      }, 1000);
+      this.hideContextMenu();
+    },
+    reconnectShell() {
+      this.socket.close();
+      this.initializeTerminal();
+      this.hideContextMenu();
+    },
+    saveOutput() {
+      const blob = new Blob([this.terminalOutput], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'shell.txt';
+      a.click();
+      this.hideContextMenu();
+    },
     setupEventListeners() {
       document.addEventListener('keydown', this.handleDocumentKeyDown);
       document.addEventListener('mousedown', this.handleDocumentMouseDown);
+      window.addEventListener('click', this.hideContextMenu);
     },
     removeEventListeners() {
       document.removeEventListener('keydown', this.handleDocumentKeyDown);
       document.removeEventListener('mousedown', this.handleDocumentMouseDown);
+      window.removeEventListener('click', this.hideContextMenu);
     },
     handleDocumentKeyDown(event) {
       // Prevent default browser actions when terminal is focused
@@ -97,19 +159,3 @@ export default {
   },
 };
 </script>
-
-<style scoped>
-.terminal-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  justify-content: flex-start;
-  align-items: flex-start;
-}
-
-.terminal {
-  width: 100%;
-  height: 100%;
-  text-align: left;
-}
-</style>
