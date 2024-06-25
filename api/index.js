@@ -8,7 +8,7 @@ const os = require('os');
 const disk = require('diskusage');
 
 const app = express();
-const PORT = process.env.PORT || 5490;
+const PORT = process.env.PORT || 5491;
 const VERSION = '0.0.1';
 
 app.use(cors());
