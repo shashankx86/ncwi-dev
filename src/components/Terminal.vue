@@ -19,24 +19,7 @@ export default {
     };
   },
   mounted() {
-    this.terminal = new Terminal();
-    this.fitAddon = new FitAddon();
-    this.terminal.loadAddon(this.fitAddon);
-    this.terminal.open(this.$refs.terminal);
-    this.fitAddon.fit();
-
-    // Connect to the WebSocket server
-    this.socket = new WebSocket('ws://localhost:5490');
-
-    this.socket.onopen = () => {
-      this.terminal.writeln('Connected to reverse shell');
-    };
-
-    this.socket.onmessage = (event) => {
-      this.terminal.write(event.data);
-    };
-
-    this.terminal.onData(this.handleInput);
+    this.initializeTerminal();
   },
   beforeDestroy() {
     if (this.socket) {
@@ -44,6 +27,34 @@ export default {
     }
   },
   methods: {
+    initializeTerminal() {
+      this.terminal = new Terminal();
+      this.fitAddon = new FitAddon();
+      this.terminal.loadAddon(this.fitAddon);
+      this.terminal.open(this.$refs.terminal);
+      this.fitAddon.fit();
+
+      // Connect to the WebSocket server
+      this.socket = new WebSocket('ws://localhost:5490');
+
+      this.socket.onopen = () => {
+        this.terminal.writeln('Connected to reverse shell');
+      };
+
+      this.socket.onmessage = (event) => {
+        if (event.data === '__RESTART__') {
+          this.terminal.writeln('\r\nShell restarted');
+        } else {
+          this.terminal.write(event.data);
+        }
+      };
+
+      this.socket.onclose = () => {
+        this.terminal.writeln('\r\nConnection closed');
+      };
+
+      this.terminal.onData(this.handleInput);
+    },
     handleInput(data) {
       this.socket.send(data);
     }

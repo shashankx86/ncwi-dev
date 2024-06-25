@@ -3,7 +3,7 @@ const pty = require('node-pty');
 
 const wss = new WebSocket.Server({ port: 5490 });
 
-wss.on('connection', (ws) => {
+function startShell(ws) {
   // Spawn a bash shell with pty
   const shell = pty.spawn('bash', [], {
     name: 'xterm-color',
@@ -17,6 +17,11 @@ wss.on('connection', (ws) => {
     ws.send(data);
   });
 
+  shell.on('exit', () => {
+    ws.send('__RESTART__');
+    startShell(ws); // Restart the shell
+  });
+
   ws.on('message', (message) => {
     shell.write(message);
   });
@@ -24,6 +29,10 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     shell.kill();
   });
+}
+
+wss.on('connection', (ws) => {
+  startShell(ws);
 });
 
 console.log('WebSocket server is running on ws://localhost:5490');
