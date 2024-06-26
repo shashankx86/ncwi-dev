@@ -11,10 +11,18 @@ const disk = require('diskusage');
 const app = express();
 const PORT = process.env.PORT || 5499;
 const VERSION = '0.0.1';
-const USERNAME = process.env.USERNAME;
-const PASSWORD = process.env.PASSWORD;
+const USERNAME = "test";
+const PASSWORD = "test";
+const serverUsername = os.userInfo().username;
 
-app.use(cors());
+const corsOptions = {
+  origin: `https://ncwi.${serverUsername}.hackclub.app`,
+  methods: ['GET', 'POST', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(session({
   secret: 'secret-key',
@@ -52,7 +60,6 @@ app.get('/version', isAuthenticated, (req, res) => {
 const systemRouter = express.Router();
 
 systemRouter.use(isAuthenticated);
-
 
 // Helper function to execute shell commands
 const executeCommand = (command, callback) => {
@@ -258,105 +265,14 @@ dockerRouter.post('/stop', (req, res) => {
   });
 });
 
-// Endpoint to restart a Docker container
-dockerRouter.post('/restart', (req, res) => {
-  const { targetid, targetname } = req.query;
-  if (!targetid && !targetname) {
-    return res.status(400).json({ message: 'Either targetid or targetname is required' });
-  }
-
-  const target = targetid || targetname;
-  executeCommand(`docker restart ${target}`, (error) => {
-    if (error) {
-      res.status(500).json({ message: `Error restarting container ${target}`, error });
-    } else {
-      res.status(200).json({ message: `Container ${target} restarted successfully` });
-    }
-  });
-});
-
-// Endpoint to list Docker images
-dockerRouter.get('/image/ls', (req, res) => {
-  executeCommand('docker image ls', (error, stdout) => {
-    if (error) {
-      return res.status(500).json({ message: 'Error fetching Docker images', error });
-    }
-
-    const lines = stdout.trim().split('\n');
-    const headers = lines[0].split(/\s{2,}/);
-    const images = lines.slice(1).map(line => {
-      const columns = line.split(/\s{2,}/);
-      return headers.reduce((image, header, index) => {
-        image[header.replace(/ /g, '_')] = columns[index];
-        return image;
-      }, {});
-    });
-
-    res.status(200).json({ images });
-  });
-});
-
-// Endpoint to remove a Docker image
-dockerRouter.delete('/image/rm', (req, res) => {
-  const { targetid, tokill } = req.query;
-  if (!targetid) {
-    return res.status(400).json({ message: 'targetid is required' });
-  }
-
-  const forceFlag = tokill === 'true' ? '--force' : '';
-  executeCommand(`docker image rm ${targetid} ${forceFlag}`, (error, stdout, stderr) => {
-    if (error) {
-      return res.status(500).json({ message: `Error removing image ${targetid}`, error: stderr || error.message });
-    }
-
-    res.status(200).json({ message: `Image ${targetid} removed successfully` });
-  });
-});
-
 // Mount the Docker related routes under /docker
 app.use('/docker', dockerRouter);
 
-// Function to get disk usage
-const getDiskUsage = (callback) => {
-  disk.check('/', (err, info) => {
-    if (err) {
-      return callback(err, null);
-    }
-    const used = (info.total - info.free) / (1024 ** 3); // Convert bytes to GB
-    const total = info.total / (1024 ** 3); // Convert bytes to GB
-    callback(null, { used: used.toFixed(2), total: total.toFixed(2) });
-  });
-};
-
-// Function to get memory usage
-const getMemoryUsage = () => {
-  const total = os.totalmem() / (1024 ** 3); // Convert bytes to GB
-  const free = os.freemem() / (1024 ** 3); // Convert bytes to GB
-  const used = total - free;
-  return { used: used.toFixed(2), total: total.toFixed(2) };
-};
-
-const nestRouter = express.Router();
-
-// Endpoint to get disk usage
-nestRouter.get('/disk', (req, res) => {
-  getDiskUsage((err, usage) => {
-    if (err) {
-      return res.status(500).json({ message: 'Error fetching disk usage', error: err.message });
-    }
-    res.status(200).json({ used: `${usage.used} GB`, total: `${usage.total} GB` });
-  });
+// Add a health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
-
-// Endpoint to get memory usage
-nestRouter.get('/ram', (req, res) => {
-  const usage = getMemoryUsage();
-  res.status(200).json({ used: `${usage.used} GB`, total: `${usage.total} GB` });
-});
-
-// Mount the nest related routes under /nest
-app.use('/nest', nestRouter);
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });

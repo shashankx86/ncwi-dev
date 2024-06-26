@@ -23,7 +23,7 @@ export default {
   methods: {
     async login() {
       try {
-        const response = await fetch('http://localhost:5499/login', {
+        const response = await fetch('https://napi.theaddicts.hackclub.app/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: this.username, password: this.password })
