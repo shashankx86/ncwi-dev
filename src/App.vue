@@ -30,10 +30,13 @@ export default {
   methods: {
     handleLogin() {
       this.loggedIn = true;
+      // Store session in session storage
+      sessionStorage.setItem('session', 'true');
     },
   },
   mounted() {
-    const session = localStorage.getItem('session');
+    // Check session storage for logged-in state
+    const session = sessionStorage.getItem('session');
     if (session) {
       this.loggedIn = true;
     }
