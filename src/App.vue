@@ -30,16 +30,24 @@ export default {
   methods: {
     handleLogin() {
       this.loggedIn = true;
-      // Store session in session storage
-      sessionStorage.setItem('session', 'true');
+      // Store session in session storage with expiration time
+      const expirationTime = new Date().getTime() + 600000; // 10 minutes in milliseconds
+      sessionStorage.setItem('session', JSON.stringify({ loggedIn: true, expiresAt: expirationTime }));
+    },
+    checkSessionExpiration() {
+      const session = JSON.parse(sessionStorage.getItem('session'));
+      if (session && session.loggedIn && session.expiresAt > new Date().getTime()) {
+        this.loggedIn = true;
+      } else {
+        this.loggedIn = false;
+        sessionStorage.removeItem('session');
+      }
     },
   },
   mounted() {
-    // Check session storage for logged-in state
-    const session = sessionStorage.getItem('session');
-    if (session) {
-      this.loggedIn = true;
-    }
+    this.checkSessionExpiration();
+    // Check session expiration periodically
+    setInterval(this.checkSessionExpiration, 60000); // Check every minute
   },
 };
 </script>
