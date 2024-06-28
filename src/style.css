@@ -26,6 +26,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 h1 {
@@ -120,12 +121,17 @@ button:focus-visible {
   display: flex;
   justify-content: flex-start;
   align-items: flex-start;
+  width: 100%;
+  height: 100%;
 }
 
 .terminal {
+  flex: 1;
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
   width: 100%;
   height: 100%;
-  text-align: left;
 }
 
 .context-menu {

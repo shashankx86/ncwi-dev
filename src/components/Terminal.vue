@@ -34,12 +34,14 @@ export default {
   mounted() {
     this.initializeTerminal();
     this.setupEventListeners();
+    window.addEventListener('resize', this.fitTerminal);
   },
   beforeDestroy() {
     if (this.socket) {
       this.socket.close();
     }
     this.removeEventListeners();
+    window.removeEventListener('resize', this.fitTerminal);
   },
   methods: {
     initializeTerminal() {
@@ -49,8 +51,9 @@ export default {
       this.terminal.open(this.$refs.terminal);
       this.fitAddon.fit();
 
-      // Connect to the WebSocket server
-      this.socket = new WebSocket('ws://napi.theaddicts.hackclub.app');
+      const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      const socketUrl = protocol + "os.theaddicts.hackclub.app" + '/ws';
+      this.socket = new WebSocket(socketUrl);
 
       this.socket.onopen = () => {
         this.terminal.writeln('Connected to reverse shell');
@@ -144,18 +147,19 @@ export default {
       window.removeEventListener('click', this.hideContextMenu);
     },
     handleDocumentKeyDown(event) {
-      // Prevent default browser actions when terminal is focused
       if (this.cursorCaptured) {
         event.preventDefault();
         this.terminal.write(event.key);
       }
     },
     handleDocumentMouseDown(event) {
-      // Release cursor capture if user clicks outside the terminal
       if (this.cursorCaptured && !this.$refs.container.contains(event.target)) {
         this.releaseCursor();
       }
     },
+    fitTerminal() {
+      this.fitAddon.fit();
+    }
   },
 };
 </script>
