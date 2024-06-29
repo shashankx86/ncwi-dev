@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+    "bytes"
     "encoding/json"
     "fmt"
     "io/ioutil"
@@ -9,21 +9,21 @@ import (
     "net/http"
     "os"
     "path/filepath"
+    "bufio"
+    "strings"
 
     "github.com/spf13/cobra"
 )
 
 var (
-    username string
-    password string
     configFilePath = filepath.Join(os.Getenv("HOME"), ".cli_tokens.json")
 )
 
 // TokenResponse represents the structure of the response from the login endpoint
 type TokenResponse struct {
-    Message          string `json:"message"`
-    AccessToken      string `json:"access_token"`
-    RefreshToken     string `json:"refresh_token"`
+    Message           string `json:"message"`
+    AccessToken       string `json:"access_token"`
+    RefreshToken      string `json:"refresh_token"`
     RefreshExpiration int64  `json:"refresh_expiration"`
 }
 
@@ -42,8 +42,23 @@ func saveTokens(tokens TokenResponse) error {
     return nil
 }
 
+// promptCredentials prompts the user for username and password if not provided as arguments
+func promptCredentials() (string, string) {
+    reader := bufio.NewReader(os.Stdin)
+
+    fmt.Print("Username: ")
+    username, _ := reader.ReadString('\n')
+    username = strings.TrimSpace(username)
+
+    fmt.Print("Password: ")
+    password, _ := reader.ReadString('\n')
+    password = strings.TrimSpace(password)
+
+    return username, password
+}
+
 // login performs the login request and saves the tokens
-func login(cmd *cobra.Command, args []string) {
+func login(username, password string) {
     url := "https://napi.theaddicts.hackclub.app/login"
     credentials := map[string]string{
         "username": username,
@@ -78,20 +93,32 @@ func login(cmd *cobra.Command, args []string) {
 }
 
 func main() {
-    var rootCmd = &cobra.Command{Use: "cli"}
-
-    var loginCmd = &cobra.Command{
-        Use:   "login",
-        Short: "Log in to the API",
-        Run:   login,
+    var rootCmd = &cobra.Command{
+        Use:   "nuc",
+        Short: "Nest User Control CLI",
+        Long:  "A CLI tool control your Nest server provided by HACK CLUB <3",
     }
 
-    loginCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
-    loginCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
-    loginCmd.MarkFlagRequired("username")
-    loginCmd.MarkFlagRequired("password")
+    var authCmd = &cobra.Command{
+        Use:   "auth [username] [password]",
+        Short: "Authenticate to the napi",
+        Long:  "Authenticate to the API using a username and password. You can provide the credentials as arguments or input them interactively.",
+        Run: func(cmd *cobra.Command, args []string) {
+            var username, password string
 
-    rootCmd.AddCommand(loginCmd)
+            if len(args) == 2 {
+                username = args[0]
+                password = args[1]
+            } else {
+                username, password = promptCredentials()
+            }
+
+            login(username, password)
+        },
+    }
+
+    rootCmd.AddCommand(authCmd)
+
     if err := rootCmd.Execute(); err != nil {
         fmt.Println(err)
         os.Exit(1)
