@@ -30,8 +30,9 @@ export default {
         });
         const result = await response.json();
         if (response.ok) {
-          // Save session ID to localStorage
-          localStorage.setItem('sessionId', result.sessionId);
+          // Save access token and refresh token to localStorage
+          localStorage.setItem('accessToken', result.access_token);
+          localStorage.setItem('refreshToken', result.refresh_token);
 
           // Optionally, store the username if needed
           localStorage.setItem('username', this.username);
@@ -51,12 +52,14 @@ export default {
   },
   beforeDestroy() {
     // Remove session data when the component is destroyed
-    localStorage.removeItem('sessionId');
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('username');
   },
   beforeRouteLeave(to, from, next) {
     // Clean up session data on page unload
-    localStorage.removeItem('sessionId');
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('username');
     next();
   }
