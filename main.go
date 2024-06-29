@@ -13,6 +13,7 @@ import (
     "strings"
 
     "github.com/spf13/cobra"
+    "nuc/components"
 )
 
 var (
@@ -34,6 +35,7 @@ func saveTokens(tokens TokenResponse) error {
         return err
     }
 
+    log.Printf("Saving tokens: %s", data)
     err = ioutil.WriteFile(configFilePath, data, 0600)
     if err != nil {
         return err
@@ -41,6 +43,7 @@ func saveTokens(tokens TokenResponse) error {
 
     return nil
 }
+
 
 // promptCredentials prompts the user for username and password if not provided as arguments
 func promptCredentials() (string, string) {
@@ -117,7 +120,21 @@ func main() {
         },
     }
 
+    var versionCmd = &cobra.Command{
+        Use:   "napi-ver",
+        Short: "Show the version of the API",
+        Long:  "Show the version of the API.",
+        Run: func(cmd *cobra.Command, args []string) {
+            versionResponse, err := components.GetVersion()
+            if err != nil {
+                log.Fatalf("Error fetching version: %v", err)
+            }
+            fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
+        },
+    }
+
     rootCmd.AddCommand(authCmd)
+    rootCmd.AddCommand(versionCmd)
 
     if err := rootCmd.Execute(); err != nil {
         fmt.Println(err)

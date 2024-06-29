@@ -1,4 +1,4 @@
-module ncwi
+module nuc
 
 go 1.19
 
