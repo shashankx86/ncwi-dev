@@ -1,16 +1,16 @@
 <template>
-    <div class="login-container">
-      <h1>Login</h1>
-      <form @submit.prevent="login">
-        <Input v-model="username" type="text" placeholder="Username" required />
-        <Input v-model="password" type="password" placeholder="Password" required />
-        <Button type="submit">Login</Button>
+    <div class="bg-neutral-800 flex flex-col items-center justify-center h-screen">
+      <h1 class="text-white font-mono p-2 text-5xl">Login</h1>
+      <form class="flex flex-col" @submit.prevent="login">
+        <Input v-model="username" type="text" class="mb-2 p-2 font-mono text-lg bg-black" placeholder="Username" required />
+        <Input v-model="password" type="password" class="mb-2 p-2 font-mono text-lg bg-black" placeholder="Password" required />
+        <Button class="p-2 text-lg cursor-pointer bg-slate-500 bg-blue-800" type="submit">Login</Button>
       </form>
-      <p v-if="error">{{ error }}</p>
+      <p class="bg-red-600" v-if="error">{{ error }}</p>
     </div>
   </template>
   
-  <script setup lang="ts">
+<script setup lang="ts">
   import { ref } from 'vue';
   import { Input } from '@/components/ui/input';
   import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@
   const username = ref('');
   const password = ref('');
   const error = ref('');
-  
+
   const login = async () => {
     const apiUrl = `https://napi.${username.value}.hackclub.app/login`;
     try {
@@ -48,40 +48,4 @@
       error.value = 'An error occurred. Please try again.';
     }
   };
-  </script>
-
-<style scoped>
-.login-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-}
-
-.login-container h1 {
-  margin-bottom: 0.1rem;
-  font-size: 300%;
-}
-
-.login-container form {
-  display: flex;
-  flex-direction: column;
-}
-
-.login-container input {
-  margin-bottom: 0.5rem;
-  padding: 0.5rem;
-  font-size: 1rem;
-}
-
-.login-container button {
-  padding: 0.5rem;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.login-container p {
-  color: red;
-}
-</style>
+</script>
