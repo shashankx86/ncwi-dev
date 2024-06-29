@@ -2,11 +2,11 @@
     <div class="bg-neutral-800 flex flex-col items-center justify-center h-screen">
       <h1 class="text-white font-mono p-2 text-5xl">Login</h1>
       <form class="flex flex-col" @submit.prevent="login">
-        <Input v-model="username" type="text" class="mb-2 p-2 font-mono text-lg bg-black text-white" placeholder="Username" required />
-        <Input v-model="password" type="password" class="mb-2 p-2 font-mono text-lg bg-black text-white" placeholder="Password" required />
-        <Button class="p-2 text-lg cursor-pointer bg-slate-500 bg-blue-800" type="submit">Login</Button>
+        <Input v-model="username" type="text" class="mb-2 p-2 font-mono text-lg bg-black text-white border-stone-500" placeholder="Username" required />
+        <Input v-model="password" type="password" class="mb-2 p-2 font-mono text-lg bg-black text-white border-stone-500" placeholder="Password" required />
+        <Button class="p-2 text-lg cursor-pointer bg-slate-500 bg-blue-800 hover:bg-blue-900" type="submit">Login</Button>
       </form>
-      <p class="bg-red-600" v-if="error">{{ error }}</p>
+      <p class="p-3 flex text-rose-600" v-if="error">{{ error }}</p>
     </div>
   </template>
   
