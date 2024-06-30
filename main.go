@@ -16,6 +16,7 @@ import (
     "os"
     "bufio"
     "strings"
+    "path/filepath"
 
     "github.com/spf13/cobra"
     "nuc/components"
@@ -29,7 +30,32 @@ type TokenResponse struct {
     RefreshExpiration int64  `json:"refresh_expiration"`
 }
 
-const configFilePath = ".cli_tokens.json"
+// getSavePath returns the path to save the encrypted token file
+func getSavePath() (string, error) {
+    homeDir, err := os.UserHomeDir()
+    if err == nil {
+        dataDir := filepath.Join(homeDir, ".nuc", "data")
+        err = os.MkdirAll(dataDir, 0700)
+        if err == nil {
+            return filepath.Join(dataDir, "cli_tokens.json"), nil
+        }
+    }
+
+    // If home directory is not accessible, use the binary directory
+    exePath, err := os.Executable()
+    if err != nil {
+        return "", err
+    }
+
+    exeDir := filepath.Dir(exePath)
+    dataDir := filepath.Join(exeDir, "data")
+    err = os.MkdirAll(dataDir, 0700)
+    if err != nil {
+        return "", err
+    }
+
+    return filepath.Join(dataDir, "cli_tokens.json"), nil
+}
 
 // hashKey hashes the key using SHA-256 to ensure it is of the correct length
 func hashKey(key []byte) []byte {
@@ -93,7 +119,12 @@ func saveTokens(tokens TokenResponse, passphrase []byte) error {
         return fmt.Errorf("error encrypting tokens: %v", err)
     }
 
-    err = ioutil.WriteFile(configFilePath, []byte(encryptedData), 0600)
+    savePath, err := getSavePath()
+    if err != nil {
+        return fmt.Errorf("error getting save path: %v", err)
+    }
+
+    err = ioutil.WriteFile(savePath, []byte(encryptedData), 0600)
     if err != nil {
         return fmt.Errorf("error writing tokens to file: %v", err)
     }
@@ -105,7 +136,12 @@ func saveTokens(tokens TokenResponse, passphrase []byte) error {
 func loadTokens(passphrase []byte) (TokenResponse, error) {
     var tokens TokenResponse
 
-    encryptedData, err := ioutil.ReadFile(configFilePath)
+    savePath, err := getSavePath()
+    if err != nil {
+        return tokens, fmt.Errorf("error getting save path: %v", err)
+    }
+
+    encryptedData, err := ioutil.ReadFile(savePath)
     if err != nil {
         return tokens, fmt.Errorf("error reading tokens from file: %v", err)
     }
