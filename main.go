@@ -36,6 +36,9 @@ type TokenResponse struct {
     RefreshExpiration int64  `json:"refresh_expiration"`
 }
 
+// CLI version
+const VERSION = "0.0.1"
+
 // getSavePath returns the path to save the encrypted token file
 func getSavePath() (string, error) {
     homeDir, err := os.UserHomeDir()
@@ -347,15 +350,20 @@ func main() {
                 }
                 apiUrl = strings.TrimSpace(input)
             }
-
+    
+            // Remove trailing slash if present
+            if strings.HasSuffix(apiUrl, "/") {
+                apiUrl = strings.TrimSuffix(apiUrl, "/")
+            }
+    
             if err := saveConfig(apiUrl); err != nil {
                 log.Fatalf("Error saving config: %v", err)
             }
-
+    
             fmt.Println("Configuration saved successfully.")
         },
     }
-
+    
     configureCmd.Flags().String("api-url", "", "The API URL to configure")
 
     // The auth command authenticates the user to the API using provided or interactive credentials.
@@ -365,18 +373,18 @@ func main() {
         Long:  "Authenticate to the API using a username and password. You can provide the credentials and encryption key as arguments or input them interactively.",
         Run: func(cmd *cobra.Command, args []string) {
             var username, password, encKey string
-
+    
             // Load the API URL from the configuration file
             config, err := loadConfig()
             if err != nil {
-                log.Fatalf("Error loading config: %v", err)
+                log.Fatalf("Error loading config: %v\nPlease configure the API URL using the 'configure --api-url' command.\nExample: configure --api-url api.example.com", err)
             }
-
+    
             // Check if the API URL is configured
             if config.APIUrl == "" {
-                log.Fatalf("API URL is not configured. Please configure it using the 'configure --api-url' command.")
+                log.Fatalf("API URL is not configured. Please configure it using the 'configure --api-url' command.\nExample: configure --api-url api.example.com")
             }
-
+    
             if len(args) == 3 {
                 username = args[0]
                 password = args[1]
@@ -384,10 +392,10 @@ func main() {
             } else {
                 username, password, encKey = promptCredentials()
             }
-
+    
             login(username, password, encKey, config.APIUrl)
         },
-    }
+    }    
 
     // The version command shows the version of the API using the configured API URL.
     var versionCmd = &cobra.Command{
@@ -410,6 +418,16 @@ func main() {
                 log.Fatalf("Error fetching version: %v", err)
             }
             fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
+        },
+    }
+
+    // The version command shows the version of the CLI tool.
+    var versionCmd = &cobra.Command{
+        Use:   "version",
+        Short: "Show the version of the CLI tool",
+        Long:  "Show the version of the CLI tool.",
+        Run: func(cmd *cobra.Command, args []string) {
+            fmt.Printf("CLI Version: %s\n", VERSION)
         },
     }
 
