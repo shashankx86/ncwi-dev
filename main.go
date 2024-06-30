@@ -8,16 +8,17 @@ import (
     "crypto/sha256"
     "encoding/base64"
     "encoding/json"
+    "bufio"
     "fmt"
     "io"
     "io/ioutil"
     "log"
     "net/http"
     "os"
-    "bufio"
-    "strings"
     "path/filepath"
+    "strings"
 
+    "github.com/eiannone/keyboard"
     "github.com/spf13/cobra"
     "nuc/components"
 )
@@ -159,23 +160,57 @@ func loadTokens(passphrase []byte) (TokenResponse, error) {
     return tokens, nil
 }
 
+// promptInput prompts the user for input and masks the input with dots
+func promptInput(prompt string, maskInput bool) (string, error) {
+    fmt.Print(prompt)
+    if !maskInput {
+        reader := bufio.NewReader(os.Stdin)
+        input, err := reader.ReadString('\n')
+        if err != nil {
+            return "", err
+        }
+        return strings.TrimSpace(input), nil
+    }
+
+    err := keyboard.Open()
+    if err != nil {
+        return "", err
+    }
+    defer keyboard.Close()
+
+    var input []rune
+    for {
+        char, key, err := keyboard.GetKey()
+        if err != nil {
+            return "", err
+        }
+
+        if key == keyboard.KeyEnter {
+            fmt.Println()
+            break
+        }
+
+        if key == keyboard.KeyBackspace || key == keyboard.KeyBackspace2 {
+            if len(input) > 0 {
+                input = input[:len(input)-1]
+                fmt.Print("\b \b")
+            }
+        } else {
+            input = append(input, char)
+            fmt.Print("•")
+        }
+    }
+
+    return string(input), nil
+}
+
 // promptCredentials prompts the user for username, password, and encryption key if not provided as arguments
 func promptCredentials() (string, string, string) {
-    reader := bufio.NewReader(os.Stdin)
+    username, _ := promptInput("Username: ", false)
+    password, _ := promptInput("Password: ", true)
+    encKey, _ := promptInput("Encryption Key: ", true)
 
-    fmt.Print("Username: ")
-    username, _ := reader.ReadString('\n')
-    username = strings.TrimSpace(username)
-
-    fmt.Print("Password: ")
-    password, _ := reader.ReadString('\n')
-    password = strings.TrimSpace(password)
-
-    fmt.Print("Encryption Key: ")
-    encKey, _ := reader.ReadString('\n')
-    encKey = strings.TrimSpace(encKey)
-
-    return username, password, encKey
+    return strings.TrimSpace(username), strings.TrimSpace(password), strings.TrimSpace(encKey)
 }
 
 // login performs the login request and saves the tokens
