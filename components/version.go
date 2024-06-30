@@ -1,4 +1,3 @@
-// components/version.go
 package components
 
 import (
@@ -18,15 +17,16 @@ type VersionResponse struct {
 }
 
 // LoadTokens loads the tokens from the local file
-func LoadTokens() (map[string]string, error) {
+func LoadTokens() (map[string]interface{}, error) {  // Change map type to interface{} to accommodate different value types
     configFilePath := filepath.Join(os.Getenv("HOME"), ".cli_tokens.json")
+    log.Printf("Loading tokens from %s", configFilePath)
     data, err := ioutil.ReadFile(configFilePath)
     if err != nil {
         log.Printf("Error reading token file: %v", err)
         return nil, err
     }
 
-    var tokens map[string]string
+    var tokens map[string]interface{}  // Use interface{} to handle mixed types
     if err := json.Unmarshal(data, &tokens); err != nil {
         log.Printf("Error unmarshalling token file: %v", err)
         return nil, err
@@ -43,7 +43,7 @@ func GetVersion() (*VersionResponse, error) {
         return nil, fmt.Errorf("please log in using the auth command")
     }
 
-    accessToken, ok := tokens["access_token"]
+    accessToken, ok := tokens["access_token"].(string)  // Assert to string type
     if !ok {
         return nil, fmt.Errorf("please log in using the auth command")
     }

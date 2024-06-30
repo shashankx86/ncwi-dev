@@ -2,22 +2,23 @@ package main
 
 import (
     "bytes"
+    "crypto/aes"
+    "crypto/cipher"
+    "crypto/rand"
+    "crypto/sha256"
+    "encoding/base64"
     "encoding/json"
     "fmt"
+    "io"
     "io/ioutil"
     "log"
     "net/http"
     "os"
-    "path/filepath"
     "bufio"
     "strings"
 
     "github.com/spf13/cobra"
     "nuc/components"
-)
-
-var (
-    configFilePath = filepath.Join(os.Getenv("HOME"), ".cli_tokens.json")
 )
 
 // TokenResponse represents the structure of the response from the login endpoint
@@ -28,25 +29,102 @@ type TokenResponse struct {
     RefreshExpiration int64  `json:"refresh_expiration"`
 }
 
-// saveTokens saves the tokens to a local file
-func saveTokens(tokens TokenResponse) error {
-    data, err := json.Marshal(tokens)
+const configFilePath = ".cli_tokens.json"
+
+// hashKey hashes the key using SHA-256 to ensure it is of the correct length
+func hashKey(key []byte) []byte {
+    hash := sha256.Sum256(key)
+    return hash[:]
+}
+
+// encrypt encrypts data using AES-256
+func encrypt(data []byte, passphrase []byte) (string, error) {
+    block, err := aes.NewCipher(hashKey(passphrase))
     if err != nil {
-        return err
+        return "", err
     }
 
-    log.Printf("Saving tokens: %s", data)
-    err = ioutil.WriteFile(configFilePath, data, 0600)
+    gcm, err := cipher.NewGCM(block)
     if err != nil {
-        return err
+        return "", err
+    }
+
+    nonce := make([]byte, gcm.NonceSize())
+    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+        return "", err
+    }
+
+    ciphertext := gcm.Seal(nonce, nonce, data, nil)
+    return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// decrypt decrypts data using AES-256
+func decrypt(data string, passphrase []byte) ([]byte, error) {
+    ciphertext, _ := base64.StdEncoding.DecodeString(data)
+
+    block, err := aes.NewCipher(hashKey(passphrase))
+    if err != nil {
+        return nil, err
+    }
+
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
+
+    nonceSize := gcm.NonceSize()
+    if len(ciphertext) < nonceSize {
+        return nil, fmt.Errorf("ciphertext too short")
+    }
+
+    nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+    return gcm.Open(nil, nonce, ciphertext, nil)
+}
+
+// saveTokens saves the tokens to a local file, encrypted
+func saveTokens(tokens TokenResponse, passphrase []byte) error {
+    data, err := json.Marshal(tokens)
+    if err != nil {
+        return fmt.Errorf("error marshalling tokens: %v", err)
+    }
+
+    encryptedData, err := encrypt(data, passphrase)
+    if err != nil {
+        return fmt.Errorf("error encrypting tokens: %v", err)
+    }
+
+    err = ioutil.WriteFile(configFilePath, []byte(encryptedData), 0600)
+    if err != nil {
+        return fmt.Errorf("error writing tokens to file: %v", err)
     }
 
     return nil
 }
 
+// loadTokens loads the tokens from the local file, decrypted
+func loadTokens(passphrase []byte) (TokenResponse, error) {
+    var tokens TokenResponse
 
-// promptCredentials prompts the user for username and password if not provided as arguments
-func promptCredentials() (string, string) {
+    encryptedData, err := ioutil.ReadFile(configFilePath)
+    if err != nil {
+        return tokens, fmt.Errorf("error reading tokens from file: %v", err)
+    }
+
+    data, err := decrypt(string(encryptedData), passphrase)
+    if err != nil {
+        return tokens, fmt.Errorf("error decrypting tokens: %v", err)
+    }
+
+    err = json.Unmarshal(data, &tokens)
+    if err != nil {
+        return tokens, fmt.Errorf("error unmarshalling tokens: %v", err)
+    }
+
+    return tokens, nil
+}
+
+// promptCredentials prompts the user for username, password, and encryption key if not provided as arguments
+func promptCredentials() (string, string, string) {
     reader := bufio.NewReader(os.Stdin)
 
     fmt.Print("Username: ")
@@ -57,11 +135,15 @@ func promptCredentials() (string, string) {
     password, _ := reader.ReadString('\n')
     password = strings.TrimSpace(password)
 
-    return username, password
+    fmt.Print("Encryption Key: ")
+    encKey, _ := reader.ReadString('\n')
+    encKey = strings.TrimSpace(encKey)
+
+    return username, password, encKey
 }
 
 // login performs the login request and saves the tokens
-func login(username, password string) {
+func login(username, password, encKey string) {
     url := "https://napi.theaddicts.hackclub.app/login"
     credentials := map[string]string{
         "username": username,
@@ -88,7 +170,7 @@ func login(username, password string) {
         log.Fatalf("Error decoding response: %v", err)
     }
 
-    if err := saveTokens(tokenResponse); err != nil {
+    if err := saveTokens(tokenResponse, []byte(encKey)); err != nil {
         log.Fatalf("Error saving tokens: %v", err)
     }
 
@@ -103,20 +185,21 @@ func main() {
     }
 
     var authCmd = &cobra.Command{
-        Use:   "auth [username] [password]",
+        Use:   "auth [username] [password] [encryption key]",
         Short: "Authenticate to the napi",
-        Long:  "Authenticate to the API using a username and password. You can provide the credentials as arguments or input them interactively.",
+        Long:  "Authenticate to the API using a username and password. You can provide the credentials and encryption key as arguments or input them interactively.",
         Run: func(cmd *cobra.Command, args []string) {
-            var username, password string
+            var username, password, encKey string
 
-            if len(args) == 2 {
+            if len(args) == 3 {
                 username = args[0]
                 password = args[1]
+                encKey = args[2]
             } else {
-                username, password = promptCredentials()
+                username, password, encKey = promptCredentials()
             }
 
-            login(username, password)
+            login(username, password, encKey)
         },
     }
 
