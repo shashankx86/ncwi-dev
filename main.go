@@ -36,7 +36,7 @@ type TokenResponse struct {
     RefreshExpiration int64  `json:"refresh_expiration"`
 }
 
-// CLI version
+// VERSION represents the CLI version
 const VERSION = "0.0.1"
 
 // getSavePath returns the path to save the encrypted token file
@@ -197,6 +197,7 @@ func loadTokens(passphrase []byte) (TokenResponse, error) {
 
 // saveConfig saves the API URL to the configuration file
 func saveConfig(apiUrl string) error {
+    apiUrl = strings.TrimSuffix(apiUrl, "/") // Remove trailing slash if present
     config := Config{APIUrl: apiUrl}
     data, err := json.Marshal(config)
     if err != nil {
@@ -262,12 +263,10 @@ func promptInput(prompt string, maskInput bool) (string, error) {
         if err != nil {
             return "", err
         }
-
         if key == keyboard.KeyEnter {
             fmt.Println()
             break
         }
-
         if key == keyboard.KeyBackspace || key == keyboard.KeyBackspace2 {
             if len(input) > 0 {
                 input = input[:len(input)-1]
@@ -275,168 +274,114 @@ func promptInput(prompt string, maskInput bool) (string, error) {
             }
         } else {
             input = append(input, char)
-            fmt.Print("•")
+            fmt.Print("*")
         }
     }
 
-    return string(input), nil
-}
-
-// promptCredentials prompts the user for username, password, and encryption key if not provided as arguments
-func promptCredentials() (string, string, string) {
-    username, _ := promptInput("Username: ", false)
-    password, _ := promptInput("Password: ", true)
-    encKey, _ := promptInput("Encryption Key: ", true)
-
-    return strings.TrimSpace(username), strings.TrimSpace(password), strings.TrimSpace(encKey)
-}
-
-// login performs the login request and saves the tokens
-func login(username, password, encKey string, apiUrl string) {
-    url := apiUrl + "/login"
-    credentials := map[string]string{
-        "username": username,
-        "password": password,
-    }
-
-    jsonData, err := json.Marshal(credentials)
-   
-    if err != nil {
-        log.Fatalf("Error encoding credentials: %v", err)
-    }
-
-    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-    if err != nil {
-        log.Fatalf("Error making request: %v", err)
-    }
-    defer resp.Body.Close()
-
-    if resp.StatusCode != http.StatusOK {
-        log.Fatalf("Login failed: %v", resp.Status)
-    }
-
-    var tokenResponse TokenResponse
-    if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
-        log.Fatalf("Error decoding response: %v", err)
-    }
-
-    if err := saveTokens(tokenResponse, []byte(encKey)); err != nil {
-        log.Fatalf("Error saving tokens: %v", err)
-    }
-
-    fmt.Println("Login successful")
+    return strings.TrimSpace(string(input)), nil
 }
 
 func main() {
-    var rootCmd = &cobra.Command{
-        Use:   "nuc",
-        Short: "Nest User Control CLI",
-        Long:  "A CLI tool to control your Nest server provided by HACK CLUB <3",
+    var rootCmd = &cobra.Command{Use: "cli"}
+    var cmdAuth = &cobra.Command{
+        Use:   "auth",
+        Short: "Authenticate and obtain access tokens",
+        Run: func(cmd *cobra.Command, args []string) {
+            config, err := loadConfig()
+            if err != nil {
+                log.Fatalf("Error loading config: %v\nUse the 'configure --api-url' command to set the API URL (e.g., api.example.com)", err)
+            }
+
+            username, err := promptInput("Enter username: ", false)
+            if err != nil {
+                log.Fatalf("Error reading username: %v", err)
+            }
+
+            password, err := promptInput("Enter password: ", true)
+            if err != nil {
+                log.Fatalf("Error reading password: %v", err)
+            }
+
+            requestBody, err := json.Marshal(map[string]string{
+                "username": username,
+                "password": password,
+            })
+            if err != nil {
+                log.Fatalf("Error marshalling request body: %v", err)
+            }
+
+            resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
+            if err != nil {
+                log.Fatalf("Error sending login request: %v", err)
+            }
+            defer resp.Body.Close()
+
+            var tokenResponse TokenResponse
+            err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
+            if err != nil {
+                log.Fatalf("Error decoding login response: %v", err)
+            }
+
+            passphrase := []byte(password)
+            err = saveTokens(tokenResponse, passphrase)
+            if err != nil {
+                log.Fatalf("Error saving tokens: %v", err)
+            }
+
+            fmt.Println(tokenResponse.Message)
+        },
     }
 
-    // The configure command sets the API URL and saves it to the configuration file.
-    var configureCmd = &cobra.Command{
+    var cmdConfigure = &cobra.Command{
         Use:   "configure",
-        Short: "Configure the CLI tool",
-        Long:  "Configure the CLI tool by setting the API URL.",
+        Short: "Configure the API URL",
         Run: func(cmd *cobra.Command, args []string) {
-            apiUrl, _ := cmd.Flags().GetString("api-url")
-            if apiUrl == "" {
-                fmt.Print("URL: ")
-                reader := bufio.NewReader(os.Stdin)
-                input, err := reader.ReadString('\n')
-                if err != nil {
-                    log.Fatalf("Error reading input: %v", err)
-                }
-                apiUrl = strings.TrimSpace(input)
+            if len(args) < 1 {
+                log.Fatalf("API URL is required\nExample: configure api.example.com")
             }
-    
-            // Remove trailing slash if present
-            if strings.HasSuffix(apiUrl, "/") {
-                apiUrl = strings.TrimSuffix(apiUrl, "/")
-            }
-    
-            if err := saveConfig(apiUrl); err != nil {
+
+            apiUrl := args[0]
+            apiUrl = strings.TrimSuffix(apiUrl, "/") // Remove trailing slash if present
+
+            err := saveConfig(apiUrl)
+            if err != nil {
                 log.Fatalf("Error saving config: %v", err)
             }
-    
+
             fmt.Println("Configuration saved successfully.")
         },
     }
-    
-    configureCmd.Flags().String("api-url", "", "The API URL to configure")
 
-    // The auth command authenticates the user to the API using provided or interactive credentials.
-    var authCmd = &cobra.Command{
-        Use:   "auth [username] [password] [encryption key]",
-        Short: "Authenticate to the API",
-        Long:  "Authenticate to the API using a username and password. You can provide the credentials and encryption key as arguments or input them interactively.",
-        Run: func(cmd *cobra.Command, args []string) {
-            var username, password, encKey string
-    
-            // Load the API URL from the configuration file
-            config, err := loadConfig()
-            if err != nil {
-                log.Fatalf("Error loading config: %v\nPlease configure the API URL using the 'configure --api-url' command.\nExample: configure --api-url api.example.com", err)
-            }
-    
-            // Check if the API URL is configured
-            if config.APIUrl == "" {
-                log.Fatalf("API URL is not configured. Please configure it using the 'configure --api-url' command.\nExample: configure --api-url api.example.com")
-            }
-    
-            if len(args) == 3 {
-                username = args[0]
-                password = args[1]
-                encKey = args[2]
-            } else {
-                username, password, encKey = promptCredentials()
-            }
-    
-            login(username, password, encKey, config.APIUrl)
-        },
-    }    
-
-    // The version command shows the version of the API using the configured API URL.
-    var versionCmd = &cobra.Command{
-        Use:   "napi-ver",
-        Short: "Show the version of the API",
-        Long:  "Show the version of the API.",
+    var cmdVersion = &cobra.Command{
+        Use:   "api-version",
+        Short: "Get the api version",
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
             if err != nil {
-                log.Fatalf("Error loading config: %v", err)
+                log.Fatalf("Error loading config: %v\nUse the 'configure' command to set the API URL (e.g., api.example.com)", err)
             }
 
-            if config.APIUrl == "" {
-                log.Fatalf("API URL is not configured. Please configure it using the 'configure --api-url' command.")
-            }
-
-            // versionResponse, err := components.GetVersion(config.APIUrl)
-            versionResponse, err := components.GetVersion()
+            passphrase, err := promptInput("Enter passphrase: ", true)
             if err != nil {
-                log.Fatalf("Error fetching version: %v", err)
+                log.Fatalf("Error reading passphrase: %v", err)
             }
+
+            tokens, err := loadTokens([]byte(passphrase))
+            if err != nil {
+                log.Fatalf("Error loading tokens: %v\nPlease authenticate using the 'auth' command", err)
+            }
+
+            versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
+            if err != nil {
+                log.Fatalf("Error getting version: %v", err)
+            }
+
             fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
         },
     }
 
-    // The version command shows the version of the CLI tool.
-    var versionCmd = &cobra.Command{
-        Use:   "version",
-        Short: "Show the version of the CLI tool",
-        Long:  "Show the version of the CLI tool.",
-        Run: func(cmd *cobra.Command, args []string) {
-            fmt.Printf("CLI Version: %s\n", VERSION)
-        },
-    }
-
-    rootCmd.AddCommand(configureCmd)
-    rootCmd.AddCommand(authCmd)
-    rootCmd.AddCommand(versionCmd)
-
+    rootCmd.AddCommand(cmdAuth, cmdConfigure, cmdVersion)
     if err := rootCmd.Execute(); err != nil {
-        fmt.Println(err)
-        os.Exit(1)
+        log.Fatalf("Error executing command: %v", err)
     }
 }
