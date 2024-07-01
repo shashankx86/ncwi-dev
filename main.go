@@ -40,29 +40,21 @@ type TokenResponse struct {
 // VERSION represents the CLI version
 const VERSION = "0.0.1"
 
+// handleErr is a reusable error handling function that provides appropriate messages to the user
+func handleErr(err error, msg string) {
+    if err != nil {
+        log.Fatalf("%s: %v", msg, err)
+    }
+}
+
 // getSavePath returns the path to save the encrypted token file
 func getSavePath() (string, error) {
     homeDir, err := os.UserHomeDir()
-    if err == nil {
-        dataDir := filepath.Join(homeDir, ".nuc", "data")
-        err = os.MkdirAll(dataDir, 0700)
-        if err == nil {
-            return filepath.Join(dataDir, "data.bin"), nil
-        }
-    }
+    handleErr(err, "Error getting home directory")
 
-    // If home directory is not accessible, use the binary directory
-    exePath, err := os.Executable()
-    if err != nil {
-        return "", err
-    }
-
-    exeDir := filepath.Dir(exePath)
-    dataDir := filepath.Join(exeDir, "data")
+    dataDir := filepath.Join(homeDir, ".nuc", "data")
     err = os.MkdirAll(dataDir, 0700)
-    if err != nil {
-        return "", err
-    }
+    handleErr(err, "Error creating data directory")
 
     return filepath.Join(dataDir, "data.bin"), nil
 }
@@ -70,26 +62,11 @@ func getSavePath() (string, error) {
 // getConfigPath returns the path to the configuration file
 func getConfigPath() (string, error) {
     homeDir, err := os.UserHomeDir()
-    if err == nil {
-        dataDir := filepath.Join(homeDir, ".nuc", "data")
-        err = os.MkdirAll(dataDir, 0700)
-        if err == nil {
-            return filepath.Join(dataDir, "config.json"), nil
-        }
-    }
+    handleErr(err, "Error getting home directory")
 
-    // If home directory is not accessible, use the binary directory
-    exePath, err := os.Executable()
-    if err != nil {
-        return "", err
-    }
-
-    exeDir := filepath.Dir(exePath)
-    dataDir := filepath.Join(exeDir, "data")
+    dataDir := filepath.Join(homeDir, ".nuc", "data")
     err = os.MkdirAll(dataDir, 0700)
-    if err != nil {
-        return "", err
-    }
+    handleErr(err, "Error creating data directory")
 
     return filepath.Join(dataDir, "config.json"), nil
 }
@@ -103,14 +80,10 @@ func hashKey(key []byte) []byte {
 // encrypt encrypts data using AES-256
 func encrypt(data []byte, passphrase []byte) (string, error) {
     block, err := aes.NewCipher(hashKey(passphrase))
-    if err != nil {
-        return "", err
-    }
+    handleErr(err, "Error creating AES cipher")
 
     gcm, err := cipher.NewGCM(block)
-    if err != nil {
-        return "", err
-    }
+    handleErr(err, "Error creating GCM")
 
     nonce := make([]byte, gcm.NonceSize())
     if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -126,14 +99,10 @@ func decrypt(data string, passphrase []byte) ([]byte, error) {
     ciphertext, _ := base64.StdEncoding.DecodeString(data)
 
     block, err := aes.NewCipher(hashKey(passphrase))
-    if err != nil {
-        return nil, err
-    }
+    handleErr(err, "Error creating AES cipher")
 
     gcm, err := cipher.NewGCM(block)
-    if err != nil {
-        return nil, err
-    }
+    handleErr(err, "Error creating GCM")
 
     nonceSize := gcm.NonceSize()
     if len(ciphertext) < nonceSize {
@@ -247,7 +216,7 @@ func loadConfig() (Config, error) {
 // promptInput prompts the user for input and masks the input with dots
 func promptInput(prompt string, maskInput bool) (string, error) {
     fmt.Print(prompt)
-    if (!maskInput) {
+    if !maskInput {
         reader := bufio.NewReader(os.Stdin)
         input, err := reader.ReadString('\n')
         if err != nil {
@@ -309,9 +278,7 @@ func main() {
             apiUrl := strings.TrimSuffix(args[0], "/") // Remove trailing slash if present
 
             err := saveConfig(apiUrl)
-            if err != nil {
-                log.Fatalf("Error saving config: %v", err)
-            }
+            handleErr(err, "Error saving config")
 
             fmt.Println("Configuration saved successfully.")
         },
@@ -322,45 +289,31 @@ func main() {
         Short: "Authenticate and obtain access tokens",
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
-            if err != nil {
-                log.Fatalf("Error loading config: %v\nUse the 'configure set-url <api-url>' command to set the API URL", err)
-            }
+            handleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
 
             username, err := promptInput("Enter username: ", false)
-            if err != nil {
-                log.Fatalf("Error reading username: %v", err)
-            }
+            handleErr(err, "Error reading username")
 
             password, err := promptInput("Enter password: ", true)
-            if err != nil {
-                log.Fatalf("Error reading password: %v", err)
-            }
+            handleErr(err, "Error reading password")
 
             requestBody, err := json.Marshal(map[string]string{
                 "username": username,
                 "password": password,
             })
-            if err != nil {
-                log.Fatalf("Error marshalling request body: %v", err)
-            }
+            handleErr(err, "Error marshalling request body")
 
             resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
-            if err != nil {
-                log.Fatalf("Error sending login request: %v", err)
-            }
+            handleErr(err, "Error sending login request")
             defer resp.Body.Close()
 
             var tokenResponse TokenResponse
             err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
-            if err != nil {
-                log.Fatalf("Error decoding login response: %v", err)
-            }
+            handleErr(err, "Error decoding login response")
 
             passphrase := []byte(password)
             err = saveTokens(tokenResponse, passphrase)
-            if err != nil {
-                log.Fatalf("Error saving tokens: %v", err)
-            }
+            handleErr(err, "Error saving tokens")
 
             fmt.Println(tokenResponse.Message)
         },
@@ -371,24 +324,16 @@ func main() {
         Short: "Get the API version",
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
-            if (err != nil) {
-                log.Fatalf("Error loading config: %v\nUse the 'configure set-url' command to set the API URL", err)
-            }
+            handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
 
             passphrase, err := promptInput("Enter passphrase: ", true)
-            if (err != nil) {
-                log.Fatalf("Error reading passphrase: %v", err)
-            }
+            handleErr(err, "Error reading passphrase")
 
             tokens, err := loadTokens([]byte(passphrase))
-            if (err != nil) {
-                log.Fatalf("Error loading tokens: %v\nPlease authenticate using the 'configure auth' command", err)
-            }
+            handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
 
             versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
-            if (err != nil) {
-                log.Fatalf("Error getting version: %v", err)
-            }
+            handleErr(err, "Error getting version")
 
             fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
         },
