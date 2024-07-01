@@ -247,7 +247,7 @@ func loadConfig() (Config, error) {
 // promptInput prompts the user for input and masks the input with dots
 func promptInput(prompt string, maskInput bool) (string, error) {
     fmt.Print(prompt)
-    if !maskInput {
+    if (!maskInput) {
         reader := bufio.NewReader(os.Stdin)
         input, err := reader.ReadString('\n')
         if err != nil {
@@ -287,7 +287,36 @@ func promptInput(prompt string, maskInput bool) (string, error) {
 }
 
 func main() {
-    var rootCmd = &cobra.Command{Use: "cli"}
+    // Get the name of the executable
+    exeName := filepath.Base(os.Args[0])
+
+    // Create the root command with the executable name
+    var rootCmd = &cobra.Command{
+        Use: exeName,
+        Short: "CLI tool for API interaction",
+    }
+    
+    var cmdConfigure = &cobra.Command{
+        Use:   "configure",
+        Short: "Configure the CLI tool",
+    }
+
+    var cmdSetURL = &cobra.Command{
+        Use:   "set-url <api-url>",
+        Short: "Set the API URL",
+        Args:  cobra.ExactArgs(1),
+        Run: func(cmd *cobra.Command, args []string) {
+            apiUrl := strings.TrimSuffix(args[0], "/") // Remove trailing slash if present
+
+            err := saveConfig(apiUrl)
+            if err != nil {
+                log.Fatalf("Error saving config: %v", err)
+            }
+
+            fmt.Println("Configuration saved successfully.")
+        },
+    }
+
     var cmdAuth = &cobra.Command{
         Use:   "auth",
         Short: "Authenticate and obtain access tokens",
@@ -337,67 +366,27 @@ func main() {
         },
     }
 
-    var cmdConfigure = &cobra.Command{
-        Use:   "configure",
-        Short: "Configure the API URL",
-        Run: func(cmd *cobra.Command, args []string) {
-            if len(args) < 1 {
-                log.Fatalf("API URL is required\nExample: configure set-url api.example.com")
-            }
-
-            apiUrl := args[0]
-            apiUrl = strings.TrimSuffix(apiUrl, "/") // Remove trailing slash if present
-
-            err := saveConfig(apiUrl)
-            if err != nil {
-                log.Fatalf("Error saving config: %v", err)
-            }
-
-            fmt.Println("Configuration saved successfully.")
-        },
-    }
-
-    var cmdSetURL = &cobra.Command{
-        Use:   "set-url",
-        Short: "Set the API URL",
-        Run: func(cmd *cobra.Command, args []string) {
-            if len(args) < 1 {
-                log.Fatalf("API URL is required\nExample: set-url api.example.com")
-            }
-
-            apiUrl := args[0]
-            apiUrl = strings.TrimSuffix(apiUrl, "/") // Remove trailing slash if present
-
-            err := saveConfig(apiUrl)
-            if err != nil {
-                log.Fatalf("Error saving config: %v", err)
-            }
-
-            fmt.Println("Configuration saved successfully.")
-        },
-    }
-
     var cmdVersion = &cobra.Command{
         Use:   "api-version",
         Short: "Get the API version",
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
-            if err != nil {
+            if (err != nil) {
                 log.Fatalf("Error loading config: %v\nUse the 'configure set-url' command to set the API URL", err)
             }
 
             passphrase, err := promptInput("Enter passphrase: ", true)
-            if err != nil {
+            if (err != nil) {
                 log.Fatalf("Error reading passphrase: %v", err)
             }
 
             tokens, err := loadTokens([]byte(passphrase))
-            if err != nil {
-                log.Fatalf("Error loading tokens: %v\nPlease authenticate using the 'auth' command", err)
+            if (err != nil) {
+                log.Fatalf("Error loading tokens: %v\nPlease authenticate using the 'configure auth' command", err)
             }
 
             versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
-            if err != nil {
+            if (err != nil) {
                 log.Fatalf("Error getting version: %v", err)
             }
 
@@ -405,10 +394,13 @@ func main() {
         },
     }
 
+    // Add commands to root and configure command
     cmdConfigure.AddCommand(cmdSetURL)
-    rootCmd.AddCommand(cmdAuth, cmdConfigure, cmdVersion)
+    cmdConfigure.AddCommand(cmdAuth)
+    rootCmd.AddCommand(cmdConfigure, cmdVersion)
+    
+    // Execute the root command
     if err := rootCmd.Execute(); err != nil {
         log.Fatalf("Error executing command: %v", err)
     }
 }
-
