@@ -12,7 +12,6 @@ import (
     "os"
     "path/filepath"
     "strings"
-    // "time"
 
     "github.com/eiannone/keyboard"
     "github.com/spf13/cobra"
@@ -139,17 +138,17 @@ func loadConfig() (Config, error) {
     var config Config
 
     configPath, err := getConfigPath()
-    if (err != nil) {
+    if err != nil {
         return config, fmt.Errorf("error getting config path: %v", err)
     }
 
     data, err := ioutil.ReadFile(configPath)
-    if (err != nil) {
+    if err != nil {
         return config, fmt.Errorf("error reading config from file: %v", err)
     }
 
     err = json.Unmarshal(data, &config)
-    if (err != nil) {
+    if err != nil {
         return config, fmt.Errorf("error unmarshalling config: %v", err)
     }
 
@@ -159,7 +158,7 @@ func loadConfig() (Config, error) {
 // promptInput prompts the user for input and masks the input with dots
 func promptInput(prompt string, maskInput bool) (string, error) {
     fmt.Print(prompt)
-    if (!maskInput) {
+    if !maskInput {
         reader := bufio.NewReader(os.Stdin)
         input, err := reader.ReadString('\n')
         if err != nil {
@@ -211,100 +210,154 @@ func printASCIIArt() {
     fmt.Println("8      `Y8o. `Y8 ` 8888     ,8P `8 8888       .8' ")
     fmt.Println("8         `Y8o.`   8888   ,d8P     8888     ,88'  ")
     fmt.Println("8            `Yo    `Y88888P'       `8888888P'    ")
-    fmt.Println("                                    by shashankx86")
-    fmt.Println("                                                  ")
 }
 
+// main initializes the CLI commands and their flags
 func main() {
-    // Print ASCII art
-    printASCIIArt()
+    var rootCmd = &cobra.Command{Use: "nuc"}
 
-    // Get the name of the executable
-    exeName := filepath.Base(os.Args[0])
-
-    // Create the root command with the executable name
-    var rootCmd = &cobra.Command{
-        Use:   exeName,
-        Short: "CLI tool for API interaction",
-    }
-
-    var cmdConfigure = &cobra.Command{
+    var configureCmd = &cobra.Command{
         Use:   "configure",
-        Short: "Configure the CLI tool",
-    }
-
-    var cmdSetURL = &cobra.Command{
-        Use:   "set-url <api-url>",
-        Short: "Set the API URL",
-        Args:  cobra.ExactArgs(1),
+        Short: "Configure the API URL",
         Run: func(cmd *cobra.Command, args []string) {
-            apiUrl := strings.TrimSuffix(args[0], "/") // Remove trailing slash if present
-
+            apiUrl, _ := cmd.Flags().GetString("api-url")
+            if apiUrl == "" {
+                apiUrl = "api.example.com"
+                fmt.Println("No API URL provided, using example:", apiUrl)
+            }
             err := saveConfig(apiUrl)
             handleErr(err, "Error saving config")
-
-            fmt.Println("Configuration saved successfully.")
+            fmt.Println("Configuration saved successfully")
         },
     }
+    configureCmd.Flags().String("api-url", "", "API URL")
+    rootCmd.AddCommand(configureCmd)
 
-    var cmdAuth = &cobra.Command{
+    var authCmd = &cobra.Command{
         Use:   "auth",
-        Short: "Authenticate and obtain access tokens",
+        Short: "Authenticate and get tokens",
         Run: func(cmd *cobra.Command, args []string) {
-            config, err := loadConfig()
-            handleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
-    
             username, err := promptInput("Enter username: ", false)
             handleErr(err, "Error reading username")
-    
             password, err := promptInput("Enter password: ", true)
             handleErr(err, "Error reading password")
-    
-            requestBody, err := json.Marshal(map[string]string{
+
+            config, err := loadConfig()
+            if err != nil {
+                fmt.Println("Configuration not found. Please run 'configure --api-url' first.")
+                return
+            }
+
+            loginURL := fmt.Sprintf("%s/auth/login", config.APIUrl)
+            payload := map[string]string{
                 "username": username,
                 "password": password,
-            })
-            handleErr(err, "Error marshalling request body")
-    
-            resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
-            handleErr(err, "Error sending login request")
+            }
+            jsonPayload, err := json.Marshal(payload)
+            handleErr(err, "Error marshalling JSON")
+
+            resp, err := http.Post(loginURL, "application/json", bytes.NewBuffer(jsonPayload))
+            handleErr(err, "Error making POST request")
             defer resp.Body.Close()
-    
+
+            if resp.StatusCode != http.StatusOK {
+                fmt.Println("Error: Unable to authenticate, please check your credentials")
+                return
+            }
+
+            body, err := ioutil.ReadAll(resp.Body)
+            handleErr(err, "Error reading response body")
+
             var tokenResponse TokenResponse
-            err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
-            handleErr(err, "Error decoding login response")
-    
+            err = json.Unmarshal(body, &tokenResponse)
+            handleErr(err, "Error unmarshalling response")
+
             err = saveTokens(tokenResponse)
             handleErr(err, "Error saving tokens")
-    
-            fmt.Println(tokenResponse.Message)
-        },
-    }    
 
-    var cmdVersion = &cobra.Command{
-        Use:   "api-version",
-        Short: "Get the API version",
+            fmt.Println("Authentication successful!")
+        },
+    }
+    rootCmd.AddCommand(authCmd)
+
+    var napiVerCmd = &cobra.Command{
+        Use:   "napi-ver",
+        Short: "Show the API version",
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
-            handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-    
+            if err != nil {
+                fmt.Println("Configuration not found. Please run 'configure --api-url' first.")
+                return
+            }
+
             tokens, err := loadTokens()
-            handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-    
-            versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
-            handleErr(err, "Error getting version")
-    
-            fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
+            if err != nil {
+                fmt.Println("Error loading tokens. Please run 'auth' command to authenticate.")
+                return
+            }
+
+            versionURL := fmt.Sprintf("%s/version", config.APIUrl)
+            req, err := http.NewRequest("GET", versionURL, nil)
+            handleErr(err, "Error creating request")
+            req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
+
+            client := &http.Client{}
+            resp, err := client.Do(req)
+            handleErr(err, "Error making GET request")
+            defer resp.Body.Close()
+
+            if resp.StatusCode != http.StatusOK {
+                fmt.Println("Error: Unable to get API version")
+                return
+            }
+
+            body, err := ioutil.ReadAll(resp.Body)
+            handleErr(err, "Error reading response body")
+
+            fmt.Printf("API Version: %s\n", body)
         },
-    }    
-
-    // Add commands to root and configure command
-    cmdConfigure.AddCommand(cmdSetURL)
-    cmdConfigure.AddCommand(cmdAuth)
-    rootCmd.AddCommand(cmdConfigure, cmdVersion)
-
-    // Execute the root command
-    if err := rootCmd.Execute(); err != nil {
-        log.Fatalf("Error executing command: %v", err)
     }
+    rootCmd.AddCommand(napiVerCmd)
+
+    var listCmd = &cobra.Command{
+        Use:   "list",
+        Short: "List services",
+        Run: func(cmd *cobra.Command, args []string) {
+            config, err := loadConfig()
+            if err != nil {
+                fmt.Println("Configuration not found. Please run 'configure --api-url' first.")
+                return
+            }
+
+            tokens, err := loadTokens()
+            if err != nil {
+                fmt.Println("Error loading tokens. Please run 'auth' command to authenticate.")
+                return
+            }
+
+            servicesResponse, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+            if err != nil {
+                fmt.Printf("Error fetching services: %v\n", err)
+                return
+            }
+
+            fmt.Println("Services:")
+            for _, service := range servicesResponse.Services {
+                fmt.Printf("Unit: %s, Load: %s, Active: %s, Sub: %s, Description: %s\n", service.Unit, service.Load, service.Active, service.Sub, service.Description)
+            }
+        },
+    }
+    rootCmd.AddCommand(listCmd)
+
+    var artCmd = &cobra.Command{
+        Use:   "art",
+        Short: "Show ASCII art",
+        Run: func(cmd *cobra.Command, args []string) {
+            printASCIIArt()
+        },
+    }
+    rootCmd.AddCommand(artCmd)
+
+    rootCmd.Version = VERSION
+    rootCmd.Execute()
 }
