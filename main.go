@@ -2,23 +2,17 @@ package main
 
 import (
     "bytes"
-    "crypto/aes"
-    "crypto/cipher"
-    "crypto/rand"
-    "crypto/sha256"
-    "encoding/base64"
+    "encoding/gob"
     "encoding/json"
     "bufio"
-    "encoding/gob"
     "fmt"
-    "io"
     "io/ioutil"
     "log"
     "net/http"
     "os"
     "path/filepath"
     "strings"
-    "time"
+    // "time"
 
     "github.com/eiannone/keyboard"
     "github.com/spf13/cobra"
@@ -48,7 +42,7 @@ func handleErr(err error, msg string) {
     }
 }
 
-// getSavePath returns the path to save the encrypted token file
+// getSavePath returns the path to save the token file
 func getSavePath() (string, error) {
     homeDir, err := os.UserHomeDir()
     handleErr(err, "Error getting home directory")
@@ -72,62 +66,8 @@ func getConfigPath() (string, error) {
     return filepath.Join(dataDir, "config.json"), nil
 }
 
-// getPasswordCachePath returns the path to the password cache file
-func getPasswordCachePath() (string, error) {
-    homeDir, err := os.UserHomeDir()
-    handleErr(err, "Error getting home directory")
-
-    cacheDir := filepath.Join(homeDir, ".nuc", "cache")
-    err = os.MkdirAll(cacheDir, 0700)
-    handleErr(err, "Error creating cache directory")
-
-    return filepath.Join(cacheDir, "password_cache.txt"), nil
-}
-
-// hashKey hashes the key using SHA-256 to ensure it is of the correct length
-func hashKey(key []byte) []byte {
-    hash := sha256.Sum256(key)
-    return hash[:]
-}
-
-// encrypt encrypts data using AES-256
-func encrypt(data []byte, passphrase []byte) (string, error) {
-    block, err := aes.NewCipher(hashKey(passphrase))
-    handleErr(err, "Error creating AES cipher")
-
-    gcm, err := cipher.NewGCM(block)
-    handleErr(err, "Error creating GCM")
-
-    nonce := make([]byte, gcm.NonceSize())
-    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-        return "", err
-    }
-
-    ciphertext := gcm.Seal(nonce, nonce, data, nil)
-    return base64.StdEncoding.EncodeToString(ciphertext), nil
-}
-
-// decrypt decrypts data using AES-256
-func decrypt(data string, passphrase []byte) ([]byte, error) {
-    ciphertext, _ := base64.StdEncoding.DecodeString(data)
-
-    block, err := aes.NewCipher(hashKey(passphrase))
-    handleErr(err, "Error creating AES cipher")
-
-    gcm, err := cipher.NewGCM(block)
-    handleErr(err, "Error creating GCM")
-
-    nonceSize := gcm.NonceSize()
-    if len(ciphertext) < nonceSize {
-        return nil, fmt.Errorf("ciphertext too short")
-    }
-
-    nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-    return gcm.Open(nil, nonce, ciphertext, nil)
-}
-
-// saveTokens saves the tokens to a local file, encrypted
-func saveTokens(tokens TokenResponse, passphrase []byte) error {
+// saveTokens saves the tokens to a local file
+func saveTokens(tokens TokenResponse) error {
     var buffer bytes.Buffer
     encoder := gob.NewEncoder(&buffer)
     err := encoder.Encode(tokens)
@@ -135,17 +75,12 @@ func saveTokens(tokens TokenResponse, passphrase []byte) error {
         return fmt.Errorf("error encoding tokens: %v", err)
     }
 
-    encryptedData, err := encrypt(buffer.Bytes(), passphrase)
-    if err != nil {
-        return fmt.Errorf("error encrypting tokens: %v", err)
-    }
-
     savePath, err := getSavePath()
     if err != nil {
         return fmt.Errorf("error getting save path: %v", err)
     }
 
-    err = ioutil.WriteFile(savePath, []byte(encryptedData), 0600)
+    err = ioutil.WriteFile(savePath, buffer.Bytes(), 0600)
     if err != nil {
         return fmt.Errorf("error writing tokens to file: %v", err)
     }
@@ -153,8 +88,8 @@ func saveTokens(tokens TokenResponse, passphrase []byte) error {
     return nil
 }
 
-// loadTokens loads the tokens from the local file, decrypted
-func loadTokens(passphrase []byte) (TokenResponse, error) {
+// loadTokens loads the tokens from the local file
+func loadTokens() (TokenResponse, error) {
     var tokens TokenResponse
 
     savePath, err := getSavePath()
@@ -162,14 +97,9 @@ func loadTokens(passphrase []byte) (TokenResponse, error) {
         return tokens, fmt.Errorf("error getting save path: %v", err)
     }
 
-    encryptedData, err := ioutil.ReadFile(savePath)
+    data, err := ioutil.ReadFile(savePath)
     if err != nil {
         return tokens, fmt.Errorf("error reading tokens from file: %v", err)
-    }
-
-    data, err := decrypt(string(encryptedData), passphrase)
-    if err != nil {
-        return tokens, fmt.Errorf("error decrypting tokens: %v", err)
     }
 
     buffer := bytes.NewBuffer(data)
@@ -209,17 +139,17 @@ func loadConfig() (Config, error) {
     var config Config
 
     configPath, err := getConfigPath()
-    if err != nil {
+    if (err != nil) {
         return config, fmt.Errorf("error getting config path: %v", err)
     }
 
     data, err := ioutil.ReadFile(configPath)
-    if err != nil {
+    if (err != nil) {
         return config, fmt.Errorf("error reading config from file: %v", err)
     }
 
     err = json.Unmarshal(data, &config)
-    if err != nil {
+    if (err != nil) {
         return config, fmt.Errorf("error unmarshalling config: %v", err)
     }
 
@@ -266,61 +196,6 @@ func promptInput(prompt string, maskInput bool) (string, error) {
     }
 
     return strings.TrimSpace(string(input)), nil
-}
-
-// getPassphraseCachePath returns the path to the passphrase cache file
-func getPassphraseCachePath() (string, error) {
-    homeDir, err := os.UserHomeDir()
-    if err != nil {
-        return "", fmt.Errorf("error getting home directory: %v", err)
-    }
-    cacheDir := filepath.Join(homeDir, ".nuc", "cache")
-    err = os.MkdirAll(cacheDir, 0700)
-    if err != nil {
-        return "", fmt.Errorf("error creating cache directory: %v", err)
-    }
-    return filepath.Join(cacheDir, "passphrase.txt"), nil
-}
-
-// savePassphraseCache saves the passphrase to the cache file
-func savePassphraseCache(passphrase string) error {
-    cachePath, err := getPassphraseCachePath()
-    if err != nil {
-        return fmt.Errorf("error getting passphrase cache path: %v", err)
-    }
-    err = ioutil.WriteFile(cachePath, []byte(passphrase), 0600)
-    if err != nil {
-        return fmt.Errorf("error writing passphrase to cache file: %v", err)
-    }
-    return nil
-}
-
-// loadPassphraseCache loads the passphrase from the cache file
-func loadPassphraseCache() (string, error) {
-    cachePath, err := getPassphraseCachePath()
-    if err != nil {
-        return "", fmt.Errorf("error getting passphrase cache path: %v", err)
-    }
-    data, err := ioutil.ReadFile(cachePath)
-    if err != nil {
-        return "", fmt.Errorf("error reading passphrase from cache file: %v", err)
-    }
-    return string(data), nil
-}
-
-// shouldPromptForPassword checks if the password prompt should be displayed
-func shouldPromptForPassword() (bool, error) {
-    lastUsedTime, err := loadPassphraseCache()
-    if err != nil {
-        return true, nil // If there's an error, prompt for the password
-    }
-
-    duration := time.Since(lastUsedTime)
-    if duration > 30*time.Minute {
-        return true, nil
-    }
-
-    return false, nil
 }
 
 func main() {
@@ -379,18 +254,10 @@ func main() {
             err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
             handleErr(err, "Error decoding login response")
     
-            passphrase := []byte(password)
-            err = saveTokens(tokenResponse, passphrase)
+            err = saveTokens(tokenResponse)
             handleErr(err, "Error saving tokens")
     
             fmt.Println(tokenResponse.Message)
-    
-            err = savePassphraseCache()
-            handleErr(err, "Error saving password cache")
-    
-            // Save the passphrase to the cache
-            err = savePassphraseCache(password)
-            handleErr(err, "Error saving passphrase cache")
         },
     }    
 
@@ -401,28 +268,7 @@ func main() {
             config, err := loadConfig()
             handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
     
-            prompt, err := shouldPromptForPassword()
-            handleErr(err, "Error checking if password prompt is needed")
-    
-            var passphrase string
-            if prompt {
-                passphrase, err = promptInput("Enter passphrase: ", true)
-                handleErr(err, "Error reading passphrase")
-    
-                // Save the current time as the last time the passphrase was used
-                err = savePassphraseCache()
-                handleErr(err, "Error saving password cache")
-    
-                // Save the passphrase to the cache
-                err = savePassphraseCache(passphrase)
-                handleErr(err, "Error saving passphrase cache")
-            } else {
-                fmt.Println("Using cached passphrase.")
-                passphrase, err = loadPassphraseCache()
-                handleErr(err, "Error loading passphrase from cache")
-            }
-    
-            tokens, err := loadTokens([]byte(passphrase))
+            tokens, err := loadTokens()
             handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
     
             versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
