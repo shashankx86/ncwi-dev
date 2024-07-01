@@ -325,7 +325,7 @@ func main() {
 
     // Create the root command with the executable name
     var rootCmd = &cobra.Command{
-        Use: exeName,
+        Use:   exeName,
         Short: "CLI tool for API interaction",
     }
 
@@ -400,19 +400,33 @@ func main() {
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
             handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
-            passphrase, err := promptInput("Enter passphrase: ", true)
-            handleErr(err, "Error reading passphrase")
-
+    
+            prompt, err := shouldPromptForPassword()
+            handleErr(err, "Error checking if password prompt is needed")
+    
+            var passphrase string
+            if prompt {
+                passphrase, err = promptInput("Enter passphrase: ", true)
+                handleErr(err, "Error reading passphrase")
+    
+                // Save the current time as the last time the passphrase was used
+                err = savePasswordCache()
+                handleErr(err, "Error saving password cache")
+            } else {
+                fmt.Println("Using cached password.")
+                // Use a dummy passphrase since it will not be used for decryption in this case
+                passphrase = "cached"
+            }
+    
             tokens, err := loadTokens([]byte(passphrase))
             handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
+    
             versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
             handleErr(err, "Error getting version")
-
+    
             fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
         },
-    }
+    }    
 
     // Add commands to root and configure command
     cmdConfigure.AddCommand(cmdSetURL)
