@@ -159,7 +159,7 @@ func loadConfig() (Config, error) {
 // promptInput prompts the user for input and masks the input with dots
 func promptInput(prompt string, maskInput bool) (string, error) {
     fmt.Print(prompt)
-    if !maskInput {
+    if (!maskInput) {
         reader := bufio.NewReader(os.Stdin)
         input, err := reader.ReadString('\n')
         if err != nil {
@@ -198,7 +198,27 @@ func promptInput(prompt string, maskInput bool) (string, error) {
     return strings.TrimSpace(string(input)), nil
 }
 
+// printASCIIArt prints a dummy ASCII art
+func printASCIIArt() {
+    fmt.Println("                                                  ")
+    fmt.Println("b.             8 8 8888      88     ,o888888o.    ")
+    fmt.Println("888o.          8 8 8888      88    8888     `88.  ")
+    fmt.Println("Y88888o.       8 8 8888      88 ,8 8888       `8. ")
+    fmt.Println(".`Y888888o.    8 8 8888      88 88 8888           ")
+    fmt.Println("8o. `Y888888o. 8 8 8888      88 88 8888           ")
+    fmt.Println("8`Y8o. `Y88888o8 8 8888      88 88 8888           ")
+    fmt.Println("8   `Y8o. `Y8888 8 8888      88 88 8888           ")
+    fmt.Println("8      `Y8o. `Y8 ` 8888     ,8P `8 8888       .8' ")
+    fmt.Println("8         `Y8o.`   8888   ,d8P     8888     ,88'  ")
+    fmt.Println("8            `Yo    `Y88888P'       `8888888P'    ")
+    fmt.Println("                                    by shashankx86")
+    fmt.Println("                                                  ")
+}
+
 func main() {
+    // Print ASCII art
+    printASCIIArt()
+
     // Get the name of the executable
     exeName := filepath.Base(os.Args[0])
 
