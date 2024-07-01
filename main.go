@@ -18,6 +18,7 @@ import (
     "os"
     "path/filepath"
     "strings"
+    "time"
 
     "github.com/eiannone/keyboard"
     "github.com/spf13/cobra"
@@ -69,6 +70,18 @@ func getConfigPath() (string, error) {
     handleErr(err, "Error creating data directory")
 
     return filepath.Join(dataDir, "config.json"), nil
+}
+
+// getPasswordCachePath returns the path to the password cache file
+func getPasswordCachePath() (string, error) {
+    homeDir, err := os.UserHomeDir()
+    handleErr(err, "Error getting home directory")
+
+    cacheDir := filepath.Join(homeDir, ".nuc", "cache")
+    err = os.MkdirAll(cacheDir, 0700)
+    handleErr(err, "Error creating cache directory")
+
+    return filepath.Join(cacheDir, "password_cache.txt"), nil
 }
 
 // hashKey hashes the key using SHA-256 to ensure it is of the correct length
@@ -255,6 +268,57 @@ func promptInput(prompt string, maskInput bool) (string, error) {
     return strings.TrimSpace(string(input)), nil
 }
 
+// savePasswordCache saves the current time as the last time the password was used
+func savePasswordCache() error {
+    cachePath, err := getPasswordCachePath()
+    if err != nil {
+        return fmt.Errorf("error getting password cache path: %v", err)
+    }
+
+    currentTime := time.Now().Format(time.RFC3339)
+    err = ioutil.WriteFile(cachePath, []byte(currentTime), 0600)
+    if err != nil {
+        return fmt.Errorf("error writing to password cache file: %v", err)
+    }
+
+    return nil
+}
+
+// loadPasswordCache loads the last time the password was used
+func loadPasswordCache() (time.Time, error) {
+    cachePath, err := getPasswordCachePath()
+    if err != nil {
+        return time.Time{}, fmt.Errorf("error getting password cache path: %v", err)
+    }
+
+    data, err := ioutil.ReadFile(cachePath)
+    if err != nil {
+        return time.Time{}, fmt.Errorf("error reading from password cache file: %v", err)
+    }
+
+    lastUsedTime, err := time.Parse(time.RFC3339, string(data))
+    if err != nil {
+        return time.Time{}, fmt.Errorf("error parsing time from cache: %v", err)
+    }
+
+    return lastUsedTime, nil
+}
+
+// shouldPromptForPassword checks if the password prompt should be displayed
+func shouldPromptForPassword() (bool, error) {
+    lastUsedTime, err := loadPasswordCache()
+    if err != nil {
+        return true, nil // If there's an error, prompt for the password
+    }
+
+    duration := time.Since(lastUsedTime)
+    if duration > 30*time.Minute {
+        return true, nil
+    }
+
+    return false, nil
+}
+
 func main() {
     // Get the name of the executable
     exeName := filepath.Base(os.Args[0])
@@ -264,7 +328,7 @@ func main() {
         Use: exeName,
         Short: "CLI tool for API interaction",
     }
-    
+
     var cmdConfigure = &cobra.Command{
         Use:   "configure",
         Short: "Configure the CLI tool",
@@ -291,31 +355,42 @@ func main() {
             config, err := loadConfig()
             handleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
 
-            username, err := promptInput("Enter username: ", false)
-            handleErr(err, "Error reading username")
+            prompt, err := shouldPromptForPassword()
+            handleErr(err, "Error checking if password prompt is needed")
 
-            password, err := promptInput("Enter password: ", true)
-            handleErr(err, "Error reading password")
+            var password string
+            if prompt {
+                username, err := promptInput("Enter username: ", false)
+                handleErr(err, "Error reading username")
 
-            requestBody, err := json.Marshal(map[string]string{
-                "username": username,
-                "password": password,
-            })
-            handleErr(err, "Error marshalling request body")
+                password, err = promptInput("Enter password: ", true)
+                handleErr(err, "Error reading password")
 
-            resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
-            handleErr(err, "Error sending login request")
-            defer resp.Body.Close()
+                requestBody, err := json.Marshal(map[string]string{
+                    "username": username,
+                    "password": password,
+                })
+                handleErr(err, "Error marshalling request body")
 
-            var tokenResponse TokenResponse
-            err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
-            handleErr(err, "Error decoding login response")
+                resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
+                handleErr(err, "Error sending login request")
+                defer resp.Body.Close()
 
-            passphrase := []byte(password)
-            err = saveTokens(tokenResponse, passphrase)
-            handleErr(err, "Error saving tokens")
+                var tokenResponse TokenResponse
+                err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
+                handleErr(err, "Error decoding login response")
 
-            fmt.Println(tokenResponse.Message)
+                passphrase := []byte(password)
+                err = saveTokens(tokenResponse, passphrase)
+                handleErr(err, "Error saving tokens")
+
+                fmt.Println(tokenResponse.Message)
+
+                err = savePasswordCache()
+                handleErr(err, "Error saving password cache")
+            } else {
+                fmt.Println("Using cached password.")
+            }
         },
     }
 
@@ -343,7 +418,7 @@ func main() {
     cmdConfigure.AddCommand(cmdSetURL)
     cmdConfigure.AddCommand(cmdAuth)
     rootCmd.AddCommand(cmdConfigure, cmdVersion)
-    
+
     // Execute the root command
     if err := rootCmd.Execute(); err != nil {
         log.Fatalf("Error executing command: %v", err)
