@@ -9,6 +9,7 @@ import (
     "encoding/base64"
     "encoding/json"
     "bufio"
+    "encoding/gob"
     "fmt"
     "io"
     "io/ioutil"
@@ -46,7 +47,7 @@ func getSavePath() (string, error) {
         dataDir := filepath.Join(homeDir, ".nuc", "data")
         err = os.MkdirAll(dataDir, 0700)
         if err == nil {
-            return filepath.Join(dataDir, "cli_tokens.json"), nil
+            return filepath.Join(dataDir, "data.bin"), nil
         }
     }
 
@@ -63,7 +64,7 @@ func getSavePath() (string, error) {
         return "", err
     }
 
-    return filepath.Join(dataDir, "cli_tokens.json"), nil
+    return filepath.Join(dataDir, "data.bin"), nil
 }
 
 // getConfigPath returns the path to the configuration file
@@ -145,12 +146,14 @@ func decrypt(data string, passphrase []byte) ([]byte, error) {
 
 // saveTokens saves the tokens to a local file, encrypted
 func saveTokens(tokens TokenResponse, passphrase []byte) error {
-    data, err := json.Marshal(tokens)
+    var buffer bytes.Buffer
+    encoder := gob.NewEncoder(&buffer)
+    err := encoder.Encode(tokens)
     if err != nil {
-        return fmt.Errorf("error marshalling tokens: %v", err)
+        return fmt.Errorf("error encoding tokens: %v", err)
     }
 
-    encryptedData, err := encrypt(data, passphrase)
+    encryptedData, err := encrypt(buffer.Bytes(), passphrase)
     if err != nil {
         return fmt.Errorf("error encrypting tokens: %v", err)
     }
@@ -187,9 +190,11 @@ func loadTokens(passphrase []byte) (TokenResponse, error) {
         return tokens, fmt.Errorf("error decrypting tokens: %v", err)
     }
 
-    err = json.Unmarshal(data, &tokens)
+    buffer := bytes.NewBuffer(data)
+    decoder := gob.NewDecoder(buffer)
+    err = decoder.Decode(&tokens)
     if err != nil {
-        return tokens, fmt.Errorf("error unmarshalling tokens: %v", err)
+        return tokens, fmt.Errorf("error decoding tokens: %v", err)
     }
 
     return tokens, nil
@@ -289,7 +294,7 @@ func main() {
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
             if err != nil {
-                log.Fatalf("Error loading config: %v\nUse the 'configure --api-url' command to set the API URL (e.g., api.example.com)", err)
+                log.Fatalf("Error loading config: %v\nUse the 'configure set-url <api-url>' command to set the API URL", err)
             }
 
             username, err := promptInput("Enter username: ", false)
@@ -337,7 +342,27 @@ func main() {
         Short: "Configure the API URL",
         Run: func(cmd *cobra.Command, args []string) {
             if len(args) < 1 {
-                log.Fatalf("API URL is required\nExample: configure api.example.com")
+                log.Fatalf("API URL is required\nExample: configure set-url api.example.com")
+            }
+
+            apiUrl := args[0]
+            apiUrl = strings.TrimSuffix(apiUrl, "/") // Remove trailing slash if present
+
+            err := saveConfig(apiUrl)
+            if err != nil {
+                log.Fatalf("Error saving config: %v", err)
+            }
+
+            fmt.Println("Configuration saved successfully.")
+        },
+    }
+
+    var cmdSetURL = &cobra.Command{
+        Use:   "set-url",
+        Short: "Set the API URL",
+        Run: func(cmd *cobra.Command, args []string) {
+            if len(args) < 1 {
+                log.Fatalf("API URL is required\nExample: set-url api.example.com")
             }
 
             apiUrl := args[0]
@@ -354,11 +379,11 @@ func main() {
 
     var cmdVersion = &cobra.Command{
         Use:   "api-version",
-        Short: "Get the api version",
+        Short: "Get the API version",
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
             if err != nil {
-                log.Fatalf("Error loading config: %v\nUse the 'configure' command to set the API URL (e.g., api.example.com)", err)
+                log.Fatalf("Error loading config: %v\nUse the 'configure set-url' command to set the API URL", err)
             }
 
             passphrase, err := promptInput("Enter passphrase: ", true)
@@ -380,8 +405,10 @@ func main() {
         },
     }
 
+    cmdConfigure.AddCommand(cmdSetURL)
     rootCmd.AddCommand(cmdAuth, cmdConfigure, cmdVersion)
     if err := rootCmd.Execute(); err != nil {
         log.Fatalf("Error executing command: %v", err)
     }
 }
+
