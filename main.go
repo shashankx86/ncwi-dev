@@ -268,45 +268,49 @@ func promptInput(prompt string, maskInput bool) (string, error) {
     return strings.TrimSpace(string(input)), nil
 }
 
-// savePasswordCache saves the current time as the last time the password was used
-func savePasswordCache() error {
-    cachePath, err := getPasswordCachePath()
+// getPassphraseCachePath returns the path to the passphrase cache file
+func getPassphraseCachePath() (string, error) {
+    homeDir, err := os.UserHomeDir()
     if err != nil {
-        return fmt.Errorf("error getting password cache path: %v", err)
+        return "", fmt.Errorf("error getting home directory: %v", err)
     }
-
-    currentTime := time.Now().Format(time.RFC3339)
-    err = ioutil.WriteFile(cachePath, []byte(currentTime), 0600)
+    cacheDir := filepath.Join(homeDir, ".nuc", "cache")
+    err = os.MkdirAll(cacheDir, 0700)
     if err != nil {
-        return fmt.Errorf("error writing to password cache file: %v", err)
+        return "", fmt.Errorf("error creating cache directory: %v", err)
     }
+    return filepath.Join(cacheDir, "passphrase.txt"), nil
+}
 
+// savePassphraseCache saves the passphrase to the cache file
+func savePassphraseCache(passphrase string) error {
+    cachePath, err := getPassphraseCachePath()
+    if err != nil {
+        return fmt.Errorf("error getting passphrase cache path: %v", err)
+    }
+    err = ioutil.WriteFile(cachePath, []byte(passphrase), 0600)
+    if err != nil {
+        return fmt.Errorf("error writing passphrase to cache file: %v", err)
+    }
     return nil
 }
 
-// loadPasswordCache loads the last time the password was used
-func loadPasswordCache() (time.Time, error) {
-    cachePath, err := getPasswordCachePath()
+// loadPassphraseCache loads the passphrase from the cache file
+func loadPassphraseCache() (string, error) {
+    cachePath, err := getPassphraseCachePath()
     if err != nil {
-        return time.Time{}, fmt.Errorf("error getting password cache path: %v", err)
+        return "", fmt.Errorf("error getting passphrase cache path: %v", err)
     }
-
     data, err := ioutil.ReadFile(cachePath)
     if err != nil {
-        return time.Time{}, fmt.Errorf("error reading from password cache file: %v", err)
+        return "", fmt.Errorf("error reading passphrase from cache file: %v", err)
     }
-
-    lastUsedTime, err := time.Parse(time.RFC3339, string(data))
-    if err != nil {
-        return time.Time{}, fmt.Errorf("error parsing time from cache: %v", err)
-    }
-
-    return lastUsedTime, nil
+    return string(data), nil
 }
 
 // shouldPromptForPassword checks if the password prompt should be displayed
 func shouldPromptForPassword() (bool, error) {
-    lastUsedTime, err := loadPasswordCache()
+    lastUsedTime, err := loadPassphraseCache()
     if err != nil {
         return true, nil // If there's an error, prompt for the password
     }
@@ -354,45 +358,41 @@ func main() {
         Run: func(cmd *cobra.Command, args []string) {
             config, err := loadConfig()
             handleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
-
-            prompt, err := shouldPromptForPassword()
-            handleErr(err, "Error checking if password prompt is needed")
-
-            var password string
-            if prompt {
-                username, err := promptInput("Enter username: ", false)
-                handleErr(err, "Error reading username")
-
-                password, err = promptInput("Enter password: ", true)
-                handleErr(err, "Error reading password")
-
-                requestBody, err := json.Marshal(map[string]string{
-                    "username": username,
-                    "password": password,
-                })
-                handleErr(err, "Error marshalling request body")
-
-                resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
-                handleErr(err, "Error sending login request")
-                defer resp.Body.Close()
-
-                var tokenResponse TokenResponse
-                err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
-                handleErr(err, "Error decoding login response")
-
-                passphrase := []byte(password)
-                err = saveTokens(tokenResponse, passphrase)
-                handleErr(err, "Error saving tokens")
-
-                fmt.Println(tokenResponse.Message)
-
-                err = savePasswordCache()
-                handleErr(err, "Error saving password cache")
-            } else {
-                fmt.Println("Using cached password.")
-            }
+    
+            username, err := promptInput("Enter username: ", false)
+            handleErr(err, "Error reading username")
+    
+            password, err := promptInput("Enter password: ", true)
+            handleErr(err, "Error reading password")
+    
+            requestBody, err := json.Marshal(map[string]string{
+                "username": username,
+                "password": password,
+            })
+            handleErr(err, "Error marshalling request body")
+    
+            resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
+            handleErr(err, "Error sending login request")
+            defer resp.Body.Close()
+    
+            var tokenResponse TokenResponse
+            err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
+            handleErr(err, "Error decoding login response")
+    
+            passphrase := []byte(password)
+            err = saveTokens(tokenResponse, passphrase)
+            handleErr(err, "Error saving tokens")
+    
+            fmt.Println(tokenResponse.Message)
+    
+            err = savePassphraseCache()
+            handleErr(err, "Error saving password cache")
+    
+            // Save the passphrase to the cache
+            err = savePassphraseCache(password)
+            handleErr(err, "Error saving passphrase cache")
         },
-    }
+    }    
 
     var cmdVersion = &cobra.Command{
         Use:   "api-version",
@@ -410,12 +410,16 @@ func main() {
                 handleErr(err, "Error reading passphrase")
     
                 // Save the current time as the last time the passphrase was used
-                err = savePasswordCache()
+                err = savePassphraseCache()
                 handleErr(err, "Error saving password cache")
+    
+                // Save the passphrase to the cache
+                err = savePassphraseCache(passphrase)
+                handleErr(err, "Error saving passphrase cache")
             } else {
-                fmt.Println("Using cached password.")
-                // Use a dummy passphrase since it will not be used for decryption in this case
-                passphrase = "cached"
+                fmt.Println("Using cached passphrase.")
+                passphrase, err = loadPassphraseCache()
+                handleErr(err, "Error loading passphrase from cache")
             }
     
             tokens, err := loadTokens([]byte(passphrase))
