@@ -1,60 +1,65 @@
 package components
 
 import (
-    "encoding/json"
-    "fmt"
-    "io/ioutil"
-    "net/http"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 )
 
-// Service represents the structure of a service in the response
+// Service represents a system service
 type Service struct {
-    Unit        string `json:"UNIT"`
-    Load        string `json:"LOAD"`
-    Active      string `json:"ACTIVE"`
-    Sub         string `json:"SUB"`
-    Description string `json:"DESCRIPTION"`
+	Unit        string `json:"UNIT"`
+	Load        string `json:"LOAD"`
+	Active      string `json:"ACTIVE"`
+	Sub         string `json:"SUB"`
+	Description string `json:"DESCRIPTION"`
 }
 
-// ServicesResponse represents the structure of the response containing services
+// ServicesResponse represents the response structure from the API
 type ServicesResponse struct {
-    Services []Service `json:"services"`
+	Services []Service `json:"services"`
 }
 
-// FetchServices fetches the services data from the API and returns a ServicesResponse
-func FetchServices(apiURL string, token string) (*ServicesResponse, error) {
-    // Append the endpoint to the base API URL
-    fullURL := fmt.Sprintf("%s/io/system", apiURL)
-    
-    // Create a new request
-    req, err := http.NewRequest("GET", fullURL, nil)
-    if err != nil {
-        return nil, fmt.Errorf("error creating request: %v", err)
-    }
+// FetchServices fetches the services from the API and returns them
+func FetchServices(apiUrl string, accessToken string) ([]Service, error) {
+	fullUrl := fmt.Sprintf("%s/io/system/services", apiUrl)
+	req, err := http.NewRequest("GET", fullUrl, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
 
-    // Set the Authorization header
-    req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-    
-    // Send the request
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-        return nil, fmt.Errorf("error sending request: %v", err)
-    }
-    defer resp.Body.Close()
-    
-    // Read the response body
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        return nil, fmt.Errorf("error reading response body: %v", err)
-    }
-    
-    // Parse the response body into a ServicesResponse
-    var servicesResponse ServicesResponse
-    err = json.Unmarshal(body, &servicesResponse)
-    if err != nil {
-        return nil, fmt.Errorf("error unmarshalling response: %v", err)
-    }
-    
-    return &servicesResponse, nil
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("received non-200 response code: %d", resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
+
+	var servicesResponse ServicesResponse
+	err = json.Unmarshal(body, &servicesResponse)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling response: %v", err)
+	}
+
+	return servicesResponse.Services, nil
+}
+
+// PrintServices prints the fetched services
+func PrintServices(services []Service) {
+	fmt.Println("Services:")
+	for _, service := range services {
+		fmt.Printf("Unit: %s, Load: %s, Active: %s, Sub: %s, Description: %s\n",
+			service.Unit, service.Load, service.Active, service.Sub, service.Description)
+	}
 }
