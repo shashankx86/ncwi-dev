@@ -7,6 +7,15 @@ import (
     "net/http"
 )
 
+// Service represents a system service
+type Service struct {
+    Unit        string `json:"UNIT"`
+    Load        string `json:"LOAD"`
+    Active      string `json:"ACTIVE"`
+    Sub         string `json:"SUB"`
+    Description string `json:"DESCRIPTION"`
+}
+
 // Socket represents a system socket
 type Socket struct {
     Unit        string `json:"UNIT"`

@@ -218,14 +218,13 @@ func main() {
 	// Get the name of the executable
 	exeName := filepath.Base(os.Args[0])
 
-	// Print the ASCII art
-	printASCIIArt();
-
 	// Create the root command with the executable name
 	var rootCmd = &cobra.Command{
 		Use:   exeName,
 		Short: "CLI tool for API interaction",
 		Run: func(cmd *cobra.Command, args []string) {
+			// Print the ASCII art
+			printASCIIArt();
 			// Display the help message if no arguments are provided
 			cmd.Help()
 		},
@@ -235,6 +234,8 @@ func main() {
 		Use:   "help",
 		Short: "Display help for the CLI tool",
 		Run: func(cmd *cobra.Command, args []string) {
+			// Print the ASCII art
+			printASCIIArt();
 			cmd.Root().Help()
 		},
 	}
@@ -315,16 +316,37 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
+	
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
-			services, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+	
+			// Fetch services and handle the returned error
+			services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
 			handleErr(err, "Error fetching services")
-
+	
+			// Print fetched services
 			components.PrintServices(services)
 		},
-	}
+	}	
+	
+	var cmdSocketList = &cobra.Command{
+		Use:   "list",
+		Short: "List all sockets",
+		Run: func(cmd *cobra.Command, args []string) {
+			config, err := loadConfig()
+			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+	
+			tokens, err := loadTokens()
+			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+	
+			// Fetch sockets and handle the returned error
+			_, sockets, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+			handleErr(err, "Error fetching services")
+	
+			// Print fetched sockets
+			components.PrintSockets(sockets)
+		},
+	}	
 
 	var cmdServices = &cobra.Command{
 		Use:   "services",
@@ -336,11 +358,18 @@ func main() {
 		Short: "System commands",
 	}
 
+	var cmdSocket = &cobra.Command{
+		Use:   "sockets",
+		Short: "Socket commands",
+	}
+
 	// Add commands to root and configure command
 	rootCmd.AddCommand(cmdHelp, cmdConfigure, cmdVersion, cmdSystem)
 	cmdConfigure.AddCommand(cmdSetURL, cmdAuth)
 	cmdSystem.AddCommand(cmdServices)
 	cmdServices.AddCommand(cmdList)
+	cmdSystem.AddCommand(cmdSocket)
+	cmdSocket.AddCommand(cmdSocketList)
 
 	// Execute the root command
 	if err := rootCmd.Execute(); err != nil {
