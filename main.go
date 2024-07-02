@@ -32,7 +32,7 @@ type TokenResponse struct {
 }
 
 // VERSION represents the CLI version
-const VERSION = "0.0.1"
+const VERSION = "0.0.2"
 
 // handleErr is a reusable error handling function that provides appropriate messages to the user
 func handleErr(err error, msg string) {
