@@ -218,13 +218,16 @@ func main() {
 	// Get the name of the executable
 	exeName := filepath.Base(os.Args[0])
 
+	// Print the ASCII art
+	printASCIIArt();
+
 	// Create the root command with the executable name
 	var rootCmd = &cobra.Command{
 		Use:   exeName,
 		Short: "CLI tool for API interaction",
 		Run: func(cmd *cobra.Command, args []string) {
-			// Print ASCII art only for the root command
-			printASCIIArt()
+			// Display the help message if no arguments are provided
+			cmd.Help()
 		},
 	}
 
@@ -232,8 +235,6 @@ func main() {
 		Use:   "help",
 		Short: "Display help for the CLI tool",
 		Run: func(cmd *cobra.Command, args []string) {
-			// Print ASCII art for the help command
-			printASCIIArt()
 			cmd.Root().Help()
 		},
 	}
@@ -308,9 +309,9 @@ func main() {
 		},
 	}
 
-	var cmdViewServices = &cobra.Command{
-		Use:   "view-services",
-		Short: "View all services",
+	var cmdList = &cobra.Command{
+		Use:   "list",
+		Short: "List all services",
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
@@ -325,9 +326,21 @@ func main() {
 		},
 	}
 
+	var cmdServices = &cobra.Command{
+		Use:   "services",
+		Short: "Manage services",
+	}
+
+	var cmdSystem = &cobra.Command{
+		Use:   "system",
+		Short: "System commands",
+	}
+
 	// Add commands to root and configure command
-	rootCmd.AddCommand(cmdHelp, cmdConfigure, cmdVersion, cmdViewServices)
+	rootCmd.AddCommand(cmdHelp, cmdConfigure, cmdVersion, cmdSystem)
 	cmdConfigure.AddCommand(cmdSetURL, cmdAuth)
+	cmdSystem.AddCommand(cmdServices)
+	cmdServices.AddCommand(cmdList)
 
 	// Execute the root command
 	if err := rootCmd.Execute(); err != nil {
