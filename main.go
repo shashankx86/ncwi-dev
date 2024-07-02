@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/eiannone/keyboard"
 	"github.com/spf13/cobra"
@@ -25,10 +26,9 @@ type Config struct {
 
 // TokenResponse represents the structure of the response from the login endpoint
 type TokenResponse struct {
-	Message           string `json:"message"`
-	AccessToken       string `json:"access_token"`
-	RefreshToken      string `json:"refresh_token"`
-	RefreshExpiration int64  `json:"refresh_expiration"`
+	Message     string `json:"message"`
+	AccessToken string `json:"access_token"`
+	Expiration  int64  `json:"expiration"`
 }
 
 // VERSION represents the CLI version
@@ -286,6 +286,8 @@ func main() {
 			err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
 			handleErr(err, "Error decoding login response")
 
+			tokenResponse.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix() // Set token expiration to one month
+
 			err = saveTokens(tokenResponse)
 			handleErr(err, "Error saving tokens")
 
@@ -303,6 +305,16 @@ func main() {
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
 
+			// Check token expiration
+			if tokens.Expiration < time.Now().Unix() {
+				log.Fatal("Token has expired. Please authenticate again.")
+			}
+
+			// Reset token expiration
+			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+			err = saveTokens(tokens)
+			handleErr(err, "Error updating token expiration")
+
 			versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
 			handleErr(err, "Error getting version")
 
@@ -319,6 +331,16 @@ func main() {
 	
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+	
+			// Check token expiration
+			if tokens.Expiration < time.Now().Unix() {
+				log.Fatal("Token has expired. Please authenticate again.")
+			}
+
+			// Reset token expiration
+			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+			err = saveTokens(tokens)
+			handleErr(err, "Error updating token expiration")
 	
 			// Fetch services and handle the returned error
 			services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
@@ -338,6 +360,16 @@ func main() {
 	
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+	
+			// Check token expiration
+			if tokens.Expiration < time.Now().Unix() {
+				log.Fatal("Token has expired. Please authenticate again.")
+			}
+
+			// Reset token expiration
+			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+			err = saveTokens(tokens)
+			handleErr(err, "Error updating token expiration")
 	
 			// Fetch sockets and handle the returned error
 			_, sockets, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
