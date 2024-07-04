@@ -1,19 +1,22 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
-	"bufio"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/eiannone/keyboard"
 	"github.com/spf13/cobra"
 	"nuc/components"
@@ -214,6 +217,56 @@ func printASCIIArt() {
 	fmt.Println("                                                  ")
 }
 
+var cmdShell = &cobra.Command{
+	Use:   "shell",
+	Short: "Open a reverse shell through the WebSocket server",
+	Run: func(cmd *cobra.Command, args []string) {
+		u := url.URL{Scheme: "ws", Host: "localhost:8963"}
+
+		// Connect to the WebSocket server
+		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		handleErr(err, "Error connecting to WebSocket server")
+		defer c.Close()
+
+		done := make(chan struct{})
+
+		// Signal handling to close the WebSocket connection gracefully
+		interrupt := make(chan os.Signal, 1)
+		signal.Notify(interrupt, os.Interrupt)
+
+		// Reader goroutine
+		go func() {
+			defer close(done)
+			for {
+				_, message, err := c.ReadMessage()
+				if err != nil {
+					log.Println("read:", err)
+					return
+				}
+				fmt.Printf("%s\n", message)
+			}
+		}()
+
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Println("Connected to the reverse shell. Type commands to execute.")
+		for {
+			fmt.Print("> ")
+			command, _ := reader.ReadString('\n')
+			command = strings.TrimSpace(command)
+
+			if command == "exit" {
+				break
+			}
+
+			err := c.WriteMessage(websocket.TextMessage, []byte(command))
+			if err != nil {
+				log.Println("write:", err)
+				break
+			}
+		}
+	},
+}
+
 func main() {
 	// Get the name of the executable
 	exeName := filepath.Base(os.Args[0])
@@ -223,8 +276,6 @@ func main() {
 		Use:   exeName,
 		Short: "CLI tool for API interaction",
 		Run: func(cmd *cobra.Command, args []string) {
-			// Print the ASCII art
-			printASCIIArt();
 			// Display the help message if no arguments are provided
 			cmd.Help()
 		},
@@ -235,7 +286,7 @@ func main() {
 		Short: "Display help for the CLI tool",
 		Run: func(cmd *cobra.Command, args []string) {
 			// Print the ASCII art
-			printASCIIArt();
+			printASCIIArt()
 			cmd.Root().Help()
 		},
 	}
@@ -328,10 +379,10 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-	
+
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-	
+
 			// Check token expiration
 			if tokens.Expiration < time.Now().Unix() {
 				log.Fatal("Token has expired. Please authenticate again.")
@@ -341,26 +392,26 @@ func main() {
 			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
 			err = saveTokens(tokens)
 			handleErr(err, "Error updating token expiration")
-	
+
 			// Fetch services and handle the returned error
 			services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
 			handleErr(err, "Error fetching services")
-	
+
 			// Print fetched services
 			components.PrintServices(services)
 		},
-	}	
-	
+	}
+
 	var cmdSocketList = &cobra.Command{
 		Use:   "list",
 		Short: "List all sockets",
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-	
+
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-	
+
 			// Check token expiration
 			if tokens.Expiration < time.Now().Unix() {
 				log.Fatal("Token has expired. Please authenticate again.")
@@ -370,15 +421,15 @@ func main() {
 			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
 			err = saveTokens(tokens)
 			handleErr(err, "Error updating token expiration")
-	
+
 			// Fetch sockets and handle the returned error
 			_, sockets, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
 			handleErr(err, "Error fetching services")
-	
+
 			// Print fetched sockets
 			components.PrintSockets(sockets)
 		},
-	}	
+	}
 
 	var cmdServices = &cobra.Command{
 		Use:   "services",
@@ -396,7 +447,7 @@ func main() {
 	}
 
 	// Add commands to root and configure command
-	rootCmd.AddCommand(cmdHelp, cmdConfigure, cmdVersion, cmdSystem)
+	rootCmd.AddCommand(cmdHelp, cmdConfigure, cmdVersion, cmdSystem, cmdShell)
 	cmdConfigure.AddCommand(cmdSetURL, cmdAuth)
 	cmdSystem.AddCommand(cmdServices)
 	cmdServices.AddCommand(cmdList)
