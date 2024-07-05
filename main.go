@@ -221,11 +221,18 @@ var cmdShell = &cobra.Command{
 	Use:   "shell",
 	Short: "Open a reverse shell through the WebSocket server",
 	Run: func(cmd *cobra.Command, args []string) {
-		u := url.URL{Scheme: "ws", Host: "localhost:8963"}
+		u := url.URL{Scheme: "wss", Host: "nws.theaddicts.hackclub.app", Path: "/ws"}
 
 		// Connect to the WebSocket server
-		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
-		handleErr(err, "Error connecting to WebSocket server")
+		c, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		if err != nil {
+			if resp != nil {
+				body, _ := ioutil.ReadAll(resp.Body)
+				log.Fatalf("Error connecting to WebSocket server: %v, Response: %s", err, string(body))
+			} else {
+				log.Fatalf("Error connecting to WebSocket server: %v", err)
+			}
+		}
 		defer c.Close()
 
 		done := make(chan struct{})
@@ -234,7 +241,7 @@ var cmdShell = &cobra.Command{
 		interrupt := make(chan os.Signal, 1)
 		signal.Notify(interrupt, os.Interrupt)
 
-		// Reader goroutine
+		// Reader goroutine to read from the WebSocket and print to stdout
 		go func() {
 			defer close(done)
 			for {
@@ -243,27 +250,39 @@ var cmdShell = &cobra.Command{
 					log.Println("read:", err)
 					return
 				}
-				fmt.Printf("%s\n", message)
+				fmt.Print(string(message))
 			}
 		}()
 
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Println("Connected to the reverse shell. Type commands to execute.")
-		for {
-			fmt.Print("> ")
-			command, _ := reader.ReadString('\n')
-			command = strings.TrimSpace(command)
+		// Writer goroutine to read from stdin and send to the WebSocket
+		go func() {
+			reader := bufio.NewReader(os.Stdin)
+			for {
+				command, err := reader.ReadString('\n')
+				if err != nil {
+					log.Println("read stdin:", err)
+					break
+				}
 
-			if command == "exit" {
-				break
+				err = c.WriteMessage(websocket.TextMessage, []byte(command))
+				if err != nil {
+					log.Println("write:", err)
+					break
+				}
 			}
+		}()
 
-			err := c.WriteMessage(websocket.TextMessage, []byte(command))
-			if err != nil {
-				log.Println("write:", err)
-				break
-			}
+		// Wait for interrupt signal to gracefully shutdown
+		<-interrupt
+		log.Println("interrupt")
+
+		// Cleanly close the WebSocket connection
+		err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		if err != nil {
+			log.Println("write close:", err)
+			return
 		}
+		<-done
 	},
 }
 
