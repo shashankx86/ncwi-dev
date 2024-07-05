@@ -217,6 +217,15 @@ func printASCIIArt() {
 	fmt.Println("                                                  ")
 }
 
+// isAPIServerOnline checks if the API server is online
+func isAPIServerOnline(apiUrl string) bool {
+	resp, err := http.Get(apiUrl + "/ping")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return false
+	}
+	return true
+}
+
 var cmdShell = &cobra.Command{
 	Use:   "shell",
 	Short: "Open a reverse shell through the WebSocket server",
@@ -264,6 +273,11 @@ var cmdShell = &cobra.Command{
 					break
 				}
 
+				if strings.TrimSpace(command) == "exit" {
+					c.WriteMessage(websocket.TextMessage, []byte(command))
+					break
+				}
+
 				err = c.WriteMessage(websocket.TextMessage, []byte(command))
 				if err != nil {
 					log.Println("write:", err)
@@ -272,19 +286,28 @@ var cmdShell = &cobra.Command{
 			}
 		}()
 
-		// Wait for interrupt signal to gracefully shutdown
-		<-interrupt
-		log.Println("interrupt")
-
-		// Cleanly close the WebSocket connection
-		err = c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		if err != nil {
-			log.Println("write close:", err)
-			return
+		for {
+			select {
+			case <-done:
+				return
+			case <-interrupt:
+				log.Println("interrupt")
+				// Gracefully close the WebSocket connection
+				err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				if err != nil {
+					log.Println("write close:", err)
+					return
+				}
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+				}
+				return
+			}
 		}
-		<-done
 	},
 }
+
 
 func main() {
 	// Get the name of the executable
@@ -297,16 +320,6 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			// Display the help message if no arguments are provided
 			cmd.Help()
-		},
-	}
-
-	var cmdHelp = &cobra.Command{
-		Use:   "help",
-		Short: "Display help for the CLI tool",
-		Run: func(cmd *cobra.Command, args []string) {
-			// Print the ASCII art
-			printASCIIArt()
-			cmd.Root().Help()
 		},
 	}
 
@@ -335,120 +348,144 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
-
+	
+			// Check if the API server is online
+			if !isAPIServerOnline(config.APIUrl) {
+				fmt.Println("API server is offline")
+				return
+			}
+	
 			username, err := promptInput("Enter username: ", false)
 			handleErr(err, "Error reading username")
-
+	
 			password, err := promptInput("Enter password: ", true)
 			handleErr(err, "Error reading password")
-
+	
 			requestBody, err := json.Marshal(map[string]string{
 				"username": username,
 				"password": password,
 			})
 			handleErr(err, "Error marshalling request body")
-
+	
 			resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
 			handleErr(err, "Error sending login request")
 			defer resp.Body.Close()
-
+	
 			var tokenResponse TokenResponse
 			err = json.NewDecoder(resp.Body).Decode(&tokenResponse)
 			handleErr(err, "Error decoding login response")
-
+	
 			tokenResponse.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix() // Set token expiration to one month
-
+	
 			err = saveTokens(tokenResponse)
 			handleErr(err, "Error saving tokens")
-
+	
 			fmt.Println(tokenResponse.Message)
 		},
 	}
-
+	
 	var cmdVersion = &cobra.Command{
 		Use:   "api-version",
-		Short: "Get the API version",
+			Short: "Get the API version",
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
+	
+			// Check if the API server is online
+			if (!isAPIServerOnline(config.APIUrl)) {
+				fmt.Println("API server is offline")
+				return
+			}
+	
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
+	
 			// Check token expiration
 			if tokens.Expiration < time.Now().Unix() {
 				log.Fatal("Token has expired. Please authenticate again.")
 			}
-
+	
 			// Reset token expiration
 			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
 			err = saveTokens(tokens)
 			handleErr(err, "Error updating token expiration")
-
+	
 			versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
 			handleErr(err, "Error getting version")
-
+	
 			fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
 		},
 	}
-
+	
 	var cmdList = &cobra.Command{
 		Use:   "list",
 		Short: "List all services",
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
+	
+			// Check if the API server is online
+			if (!isAPIServerOnline(config.APIUrl)) {
+				fmt.Println("API server is offline")
+				return
+			}
+	
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
+	
 			// Check token expiration
 			if tokens.Expiration < time.Now().Unix() {
 				log.Fatal("Token has expired. Please authenticate again.")
 			}
-
+	
 			// Reset token expiration
 			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
 			err = saveTokens(tokens)
 			handleErr(err, "Error updating token expiration")
-
+	
 			// Fetch services and handle the returned error
 			services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
 			handleErr(err, "Error fetching services")
-
+	
 			// Print fetched services
 			components.PrintServices(services)
 		},
 	}
-
+	
 	var cmdSocketList = &cobra.Command{
 		Use:   "list",
 		Short: "List all sockets",
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
 			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
+	
+			// Check if the API server is online
+			if (!isAPIServerOnline(config.APIUrl)) {
+				fmt.Println("API server is offline")
+				return
+			}
+	
 			tokens, err := loadTokens()
 			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
+	
 			// Check token expiration
 			if tokens.Expiration < time.Now().Unix() {
 				log.Fatal("Token has expired. Please authenticate again.")
 			}
-
+	
 			// Reset token expiration
 			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
 			err = saveTokens(tokens)
 			handleErr(err, "Error updating token expiration")
-
+	
 			// Fetch sockets and handle the returned error
 			_, sockets, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
 			handleErr(err, "Error fetching services")
-
+	
 			// Print fetched sockets
 			components.PrintSockets(sockets)
 		},
-	}
+	}	
 
 	var cmdServices = &cobra.Command{
 		Use:   "services",
@@ -466,7 +503,7 @@ func main() {
 	}
 
 	// Add commands to root and configure command
-	rootCmd.AddCommand(cmdHelp, cmdConfigure, cmdVersion, cmdSystem, cmdShell)
+	rootCmd.AddCommand(cmdConfigure, cmdVersion, cmdSystem, cmdShell)
 	cmdConfigure.AddCommand(cmdSetURL, cmdAuth)
 	cmdSystem.AddCommand(cmdServices)
 	cmdServices.AddCommand(cmdList)

@@ -1,64 +1,41 @@
-package auth
+package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
+	"log"
+	"time"
 
+	"github.com/spf13/cobra"
 	"nuc/utils"
 )
 
-type AuthResponse struct {
-	AccessToken string `json:"access_token"`
-	Expiration  int64  `json:"expiration"`
-}
+var authCmd = &cobra.Command{
+	Use:   "auth",
+	Short: "Authenticate and obtain access tokens",
+	Run: func(cmd *cobra.Command, args []string) {
+		config, err := utils.LoadConfig()
+		utils.HandleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
 
-func Authenticate(username, password, apiUrl string) (*AuthResponse, error) {
-	authData := map[string]string{
-		"username": username,
-		"password": password,
-	}
-	authJSON, err := json.Marshal(authData)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest("POST", apiUrl+"/api/authenticate", strings.NewReader(string(authJSON)))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
+		// Check if the API server is online
+		if !utils.IsAPIServerOnline(config.APIUrl) {
+			fmt.Println("API server is offline")
+			return
+		}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+		username, err := utils.PromptInput("Enter username: ", false)
+		utils.HandleErr(err, "Error reading username")
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("authentication failed: %s", resp.Status)
-	}
+		password, err := utils.PromptInput("Enter password: ", true)
+		utils.HandleErr(err, "Error reading password")
 
-	var authResponse AuthResponse
-	err = json.NewDecoder(resp.Body).Decode(&authResponse)
-	if err != nil {
-		return nil, err
-	}
+		tokens, err := utils.Authenticate(username, password, config.APIUrl)
+		utils.HandleErr(err, "Error during authentication")
 
-	return &authResponse, nil
-}
+		tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix() // Set token expiration to one month
 
-func SaveAuthResponse(authResponse *AuthResponse) error {
-	tokenData, err := json.Marshal(authResponse)
-	if err != nil {
-		return err
-	}
+		err = utils.SaveTokens(tokens)
+		utils.HandleErr(err, "Error saving tokens")
 
-	tokenFilePath, err := utils.GetTokenFilePath()
-	if err != nil {
-		return err
-	}
-
-	return utils.SaveToFile(tokenFilePath, tokenData)
+		fmt.Println(tokens.Message)
+	},
 }

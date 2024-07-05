@@ -10,9 +10,9 @@ import (
 	"nuc/utils"
 )
 
-var versionCmd = &cobra.Command{
-	Use:   "api-version",
-	Short: "Get the API version",
+var listCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all services",
 	Run: func(cmd *cobra.Command, args []string) {
 		config, err := utils.LoadConfig()
 		utils.HandleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
@@ -36,9 +36,13 @@ var versionCmd = &cobra.Command{
 		err = utils.SaveTokens(tokens)
 		utils.HandleErr(err, "Error updating token expiration")
 
-		versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
-		utils.HandleErr(err, "Error getting version")
+		services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+		utils.HandleErr(err, "Error fetching services")
 
-		fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
+		components.PrintServices(services)
 	},
+}
+
+func init() {
+	rootCmd.AddCommand(listCmd)
 }

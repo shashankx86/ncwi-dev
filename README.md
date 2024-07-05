@@ -11,3 +11,35 @@ Y88888o.       8 8 8888      88 ,8 8888       `8.
 8            `Yo    `Y88888P'       `8888888P'    
                                     by shashankx86
 ```
+
+Project Tree
+```
+nuc/
+│
+├── cmd/
+│   ├── root.go
+│   ├── configure.go
+│   ├── auth.go
+│   ├── version.go
+│   ├── services.go
+│   ├── socket.go
+│   ├── shell.go
+│
+├── components/
+│   ├── components.go
+│
+├── config/
+│   ├── config.go
+│
+├── utils/
+│   ├── ascii_art.go
+│   ├── errors.go
+│   ├── input.go
+│   ├── paths.go
+│   ├── tokens.go
+│
+├── main.go
+│
+├── go.mod
+└── go.sum
+```
