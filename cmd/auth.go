@@ -1,41 +1,24 @@
 package cmd
 
 import (
-	"fmt"
-	"log"
-	"time"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"nuc/utils"
 )
 
-var authCmd = &cobra.Command{
-	Use:   "auth",
-	Short: "Authenticate and obtain access tokens",
+var rootCmd = &cobra.Command{
+	Use:   filepath.Base(os.Args[0]),
+	Short: "CLI tool for API interaction",
 	Run: func(cmd *cobra.Command, args []string) {
-		config, err := utils.LoadConfig()
-		utils.HandleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
-
-		// Check if the API server is online
-		if !utils.IsAPIServerOnline(config.APIUrl) {
-			fmt.Println("API server is offline")
-			return
-		}
-
-		username, err := utils.PromptInput("Enter username: ", false)
-		utils.HandleErr(err, "Error reading username")
-
-		password, err := utils.PromptInput("Enter password: ", true)
-		utils.HandleErr(err, "Error reading password")
-
-		tokens, err := utils.Authenticate(username, password, config.APIUrl)
-		utils.HandleErr(err, "Error during authentication")
-
-		tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix() // Set token expiration to one month
-
-		err = utils.SaveTokens(tokens)
-		utils.HandleErr(err, "Error saving tokens")
-
-		fmt.Println(tokens.Message)
+		cmd.Help()
 	},
+}
+
+func Execute() error {
+	return rootCmd.Execute()
+}
+
+func init() {
+	rootCmd.AddCommand(configureCmd, versionCmd, systemCmd, shellCmd)
 }
