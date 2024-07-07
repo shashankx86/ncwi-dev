@@ -487,6 +487,89 @@ func main() {
 		},
 	}	
 
+	// Add subcommands for stopping and starting services
+	var cmdStopService = &cobra.Command{
+		Use:   "stop [service]",
+		Short: "Stop a specific service",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			service := args[0]
+			config, err := loadConfig()
+			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+
+			// Check if the API server is online
+			if !isAPIServerOnline(config.APIUrl) {
+				fmt.Println("API server is offline")
+				return
+			}
+
+			tokens, err := loadTokens()
+			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+
+			// Check token expiration
+			if tokens.Expiration < time.Now().Unix() {
+				log.Fatal("Token has expired. Please authenticate again.")
+			}
+
+			// Reset token expiration
+			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+			err = saveTokens(tokens)
+			handleErr(err, "Error updating token expiration")
+
+			resp, err := http.PostForm(fmt.Sprintf("%s/system/services/stop", config.APIUrl), url.Values{"target": {service}})
+			handleErr(err, "Error sending stop service request")
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				fmt.Printf("Service %s stopped successfully.\n", service)
+			} else {
+				body, _ := ioutil.ReadAll(resp.Body)
+				log.Fatalf("Error stopping service: %s", string(body))
+			}
+		},
+	}
+
+	var cmdStartService = &cobra.Command{
+		Use:   "start [service]",
+		Short: "Start a specific service",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			service := args[0]
+			config, err := loadConfig()
+			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+
+			// Check if the API server is online
+			if !isAPIServerOnline(config.APIUrl) {
+				fmt.Println("API server is offline")
+				return
+			}
+
+			tokens, err := loadTokens()
+			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+
+			// Check token expiration
+			if tokens.Expiration < time.Now().Unix() {
+				log.Fatal("Token has expired. Please authenticate again.")
+			}
+
+			// Reset token expiration
+			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+			err = saveTokens(tokens)
+			handleErr(err, "Error updating token expiration")
+
+			resp, err := http.PostForm(fmt.Sprintf("%s/system/services/start", config.APIUrl), url.Values{"target": {service}})
+			handleErr(err, "Error sending start service request")
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				fmt.Printf("Service %s started successfully.\n", service)
+			} else {
+				body, _ := ioutil.ReadAll(resp.Body)
+				log.Fatalf("Error starting service: %s", string(body))
+			}
+		},
+	}
+
 	var cmdServices = &cobra.Command{
 		Use:   "services",
 		Short: "Manage services",
@@ -506,7 +589,7 @@ func main() {
 	rootCmd.AddCommand(cmdConfigure, cmdVersion, cmdSystem, cmdShell)
 	cmdConfigure.AddCommand(cmdSetURL, cmdAuth)
 	cmdSystem.AddCommand(cmdServices)
-	cmdServices.AddCommand(cmdList)
+	cmdServices.AddCommand(cmdList, cmdStopService, cmdStartService)
 	cmdSystem.AddCommand(cmdSocket)
 	cmdSocket.AddCommand(cmdSocketList)
 
