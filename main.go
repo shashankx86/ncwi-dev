@@ -719,6 +719,64 @@ func main() {
 		},
 	}
 
+	// Define the rm command for Docker
+	var cmdDockerRm = &cobra.Command{
+		Use:   "rm [image]",
+		Short: "Remove a specific Docker image",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			image := args[0]
+			config, err := loadConfig()
+			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+
+			// Check if the API server is online
+			if !isAPIServerOnline(config.APIUrl) {
+				fmt.Println("API server is offline")
+				return
+			}
+
+			tokens, err := loadTokens()
+			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+
+			// Check token expiration
+			if tokens.Expiration < time.Now().Unix() {
+				log.Fatal("Token has expired. Please authenticate again.")
+			}
+
+			// Reset token expiration
+			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+			err = saveTokens(tokens)
+			handleErr(err, "Error updating token expiration")
+
+			// Check if force flag is set
+			force, _ := cmd.Flags().GetBool("force")
+
+			client := &http.Client{}
+			req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/docker/image/rm?targetid=%s&toforce=%t", config.APIUrl, image, force), nil)
+			handleErr(err, "Error creating request")
+
+			// Add authorization header with access token
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
+
+			resp, err := client.Do(req)
+			handleErr(err, "Error sending delete image request")
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				var result struct {
+					Message string `json:"message"`
+				}
+				err = json.NewDecoder(resp.Body).Decode(&result)
+				handleErr(err, "Error decoding delete image response")
+
+				fmt.Println(result.Message)
+			} else {
+				body, _ := ioutil.ReadAll(resp.Body)
+				log.Fatalf("Error removing Docker image: %s", string(body))
+			}
+		},
+	}
+
 	var cmdSystem = &cobra.Command{
 		Use:   "system",
 		Short: "System commands",
@@ -740,13 +798,15 @@ func main() {
 	}
 
 	// Add commands to root and configure command
+	cmdDockerRm.Flags().Bool("force", false, "Force remove the image")
+
 	rootCmd.AddCommand(cmdConfigure, cmdVersion, cmdSystem, cmdShell, cmdDocker)
 	cmdConfigure.AddCommand(cmdSetURL, cmdAuth)
 	cmdSystem.AddCommand(cmdServices)
 	cmdServices.AddCommand(cmdList, cmdStopService, cmdStartService)
 	cmdSystem.AddCommand(cmdSocket)
 	cmdSocket.AddCommand(cmdSocketList)
-	cmdDocker.AddCommand(cmdDockerPS, cmdDockerStart, cmdDockerStop)
+	cmdDocker.AddCommand(cmdDockerPS, cmdDockerStart, cmdDockerStop, cmdDockerRm)
 
 	// Execute the root command
 	if err := rootCmd.Execute(); err != nil {
