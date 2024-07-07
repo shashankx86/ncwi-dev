@@ -24,10 +24,8 @@ import (
 
 // Config represents the structure of the configuration file
 type Config struct {
-	APIUrl   string `json:"api_url"`
-	ShellUrl string `json:"shell_url"`
+	BaseURL string `json:"base_url"`
 }
-
 
 // TokenResponse represents the structure of the response from the login endpoint
 type TokenResponse struct {
@@ -116,10 +114,10 @@ func loadTokens() (TokenResponse, error) {
 	return tokens, nil
 }
 
-// saveConfig saves the API URL and Shell URL to the configuration file
-func saveConfig(apiUrl string, shellUrl string) error {
-	apiUrl = strings.TrimSuffix(apiUrl, "/") // Remove trailing slash if present
-	config := Config{APIUrl: apiUrl, ShellUrl: shellUrl}
+// saveConfig saves the Base URL to the configuration file
+func saveConfig(baseURL string) error {
+	baseURL = sanitizeURL(baseURL) // Sanitize the input URL
+	config := Config{BaseURL: baseURL}
 	data, err := json.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("error marshalling config: %v", err)
@@ -138,7 +136,7 @@ func saveConfig(apiUrl string, shellUrl string) error {
 	return nil
 }
 
-// loadConfig loads the API URL and Shell URL from the configuration file
+// loadConfig loads the Base URL from the configuration file
 func loadConfig() (Config, error) {
 	var config Config
 
@@ -158,6 +156,26 @@ func loadConfig() (Config, error) {
 	}
 
 	return config, nil
+}
+
+// sanitizeURL removes any protocol and trailing slashes from the input URL
+func sanitizeURL(input string) string {
+	input = strings.TrimSpace(input)
+	input = strings.TrimSuffix(input, "/")
+	if strings.Contains(input, "://") {
+		input = strings.Split(input, "://")[1]
+	}
+	return input
+}
+
+// getAPIURL forms the API URL using the base URL
+func getAPIURL(baseURL string) string {
+	return "https://napi." + baseURL
+}
+
+// getShellURL forms the shell URL using the base URL
+func getShellURL(baseURL string) string {
+	return "wss://nws." + baseURL + "/ws"
 }
 
 // promptInput prompts the user for input and masks the input with dots
@@ -208,7 +226,7 @@ func postRUN(cmd *cobra.Command, args []string, action func(Config, TokenRespons
 	handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
 
 	// Check if the API server is online
-	if !isAPIServerOnline(config.APIUrl) {
+	if !isAPIServerOnline(config.BaseURL) {
 		fmt.Println("API server is offline")
 		return
 	}
@@ -247,6 +265,7 @@ func printASCIIArt() {
 }
 
 // isAPIServerOnline checks if the API server is online
+// isAPIServerOnline checks if the API server is online
 func isAPIServerOnline(apiUrl string) bool {
 	resp, err := http.Get(apiUrl + "/ping")
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -262,7 +281,7 @@ var cmdShell = &cobra.Command{
 		config, err := loadConfig()
 		handleErr(err, "Error loading config")
 
-		u := url.URL{Scheme: "wss", Host: config.ShellUrl, Path: "/ws"}
+		u := url.URL{Scheme: "wss", Host: getShellURL(config.BaseURL), Path: "/ws"}
 
 		// Connect to the WebSocket server
 		c, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -360,49 +379,28 @@ func main() {
 	}
 
 	var cmdSetURL = &cobra.Command{
-		Use:   "set-url <api-url>",
-		Short: "Set the API URL",
+		Use:   "set-url <base-url>",
+		Short: "Set the Base URL",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			apiUrl := strings.TrimSuffix(args[0], "/") // Remove trailing slash if present
-
-			err := saveConfig(apiUrl)
+			baseURL := args[0]
+	
+			err := saveConfig(baseURL)
 			handleErr(err, "Error saving config")
-
+	
 			fmt.Println("Configuration saved successfully.")
 		},
-	}
-
-	var cmdSetShellURL = &cobra.Command{
-		Use:   "shell-url <shell-url>",
-		Short: "Set the Reverse Shell URL",
-		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			shellUrl := args[0]
-			if strings.HasPrefix(shellUrl, "http") {
-				log.Fatal("Invalid shell URL: must not start with http")
-			}
-	
-			config, err := loadConfig()
-			handleErr(err, "Error loading config")
-	
-			err = saveConfig(config.APIUrl, shellUrl)
-			handleErr(err, "Error saving config")
-	
-			fmt.Println("Shell URL configuration saved successfully.")
-		},
-	}
-	
+	}	
 
 	var cmdAuth = &cobra.Command{
 		Use:   "auth",
 		Short: "Authenticate and obtain access tokens",
 		Run: func(cmd *cobra.Command, args []string) {
 			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url <api-url>' command to set the API URL")
+			handleErr(err, "Error loading config\nUse the 'configure set-url <base-url>' command to set the Base URL")
 	
 			// Check if the API server is online
-			if !isAPIServerOnline(config.APIUrl) {
+			if !isAPIServerOnline(getAPIURL(config.BaseURL)) {
 				fmt.Println("API server is offline")
 				return
 			}
@@ -419,7 +417,7 @@ func main() {
 			})
 			handleErr(err, "Error marshalling request body")
 	
-			resp, err := http.Post(config.APIUrl+"/login", "application/json", bytes.NewBuffer(requestBody))
+			resp, err := http.Post(getAPIURL(config.BaseURL)+"/login", "application/json", bytes.NewBuffer(requestBody))
 			handleErr(err, "Error sending login request")
 			defer resp.Body.Close()
 	
@@ -434,14 +432,14 @@ func main() {
 	
 			fmt.Println(tokenResponse.Message)
 		},
-	}
+	}	
 	
 	var cmdVersion = &cobra.Command{
 		Use:   "api-version",
 		Short: "Get the API version",
 		Run: func(cmd *cobra.Command, args []string) {
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
+				versionResponse, err := components.GetVersion(tokens.AccessToken, config.BaseURL)
 				handleErr(err, "Error getting version")
 	
 				fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
@@ -454,7 +452,7 @@ func main() {
 		Short: "List all services",
 		Run: func(cmd *cobra.Command, args []string) {
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+				services, _, err := components.FetchServices(config.BaseURL, tokens.AccessToken)
 				handleErr(err, "Error fetching services")
 	
 				components.PrintServices(services)
@@ -467,7 +465,7 @@ func main() {
 		Short: "List all sockets",
 		Run: func(cmd *cobra.Command, args []string) {
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				_, sockets, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+				_, sockets, err := components.FetchServices(config.BaseURL, tokens.AccessToken)
 				handleErr(err, "Error fetching services")
 	
 				components.PrintSockets(sockets)
@@ -482,7 +480,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			service := args[0]
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				resp, err := http.PostForm(fmt.Sprintf("%s/system/services/stop", config.APIUrl), url.Values{"target": {service}})
+				resp, err := http.PostForm(fmt.Sprintf("%s/system/services/stop", config.BaseURL), url.Values{"target": {service}})
 				handleErr(err, "Error sending stop service request")
 				defer resp.Body.Close()
 	
@@ -503,7 +501,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			service := args[0]
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				resp, err := http.PostForm(fmt.Sprintf("%s/system/services/start", config.APIUrl), url.Values{"target": {service}})
+				resp, err := http.PostForm(fmt.Sprintf("%s/system/services/start", config.BaseURL), url.Values{"target": {service}})
 				handleErr(err, "Error sending start service request")
 				defer resp.Body.Close()
 	
@@ -523,7 +521,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
 				client := &http.Client{}
-				req, err := http.NewRequest("GET", fmt.Sprintf("%s/io/docker/running", config.APIUrl), nil)
+				req, err := http.NewRequest("GET", fmt.Sprintf("%s/io/docker/running", config.BaseURL), nil)
 				handleErr(err, "Error creating request")
 	
 				// Add authorization header with access token
@@ -568,7 +566,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			container := args[0]
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/start", config.APIUrl), url.Values{"target": {container}})
+				resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/start", config.BaseURL), url.Values{"target": {container}})
 				handleErr(err, "Error sending start container request")
 				defer resp.Body.Close()
 	
@@ -589,7 +587,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			container := args[0]
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/stop", config.APIUrl), url.Values{"target": {container}})
+				resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/stop", config.BaseURL), url.Values{"target": {container}})
 				handleErr(err, "Error sending stop container request")
 				defer resp.Body.Close()
 	
@@ -615,7 +613,7 @@ func main() {
 				force, _ := cmd.Flags().GetBool("force")
 
 				client := &http.Client{}
-				req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/docker/image/rm?targetid=%s&toforce=%t", config.APIUrl, image, force), nil)
+				req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/docker/image/rm?targetid=%s&toforce=%t", config.BaseURL, image, force), nil)
 				handleErr(err, "Error creating request")
 
 				// Add authorization header with access token
@@ -649,7 +647,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			container := args[0]
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
-				resp, err := http.PostForm(fmt.Sprintf("%s/docker/restart", config.APIUrl), url.Values{"target": {container}})
+				resp, err := http.PostForm(fmt.Sprintf("%s/docker/restart", config.BaseURL), url.Values{"target": {container}})
 				handleErr(err, "Error sending restart container request")
 				defer resp.Body.Close()
 
@@ -670,7 +668,7 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
 				client := &http.Client{}
-				req, err := http.NewRequest("GET", fmt.Sprintf("%s/docker/image/ls", config.APIUrl), nil)
+				req, err := http.NewRequest("GET", fmt.Sprintf("%s/docker/image/ls", config.BaseURL), nil)
 				handleErr(err, "Error creating request")
 
 				// Add authorization header with access token
