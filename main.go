@@ -577,7 +577,7 @@ func main() {
 			})
 		},
 	}
-		
+
 	// Define the rm command for Docker
 	var cmdDockerRm = &cobra.Command{
 		Use:   "rm [image]",
@@ -585,54 +585,34 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			image := args[0]
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				// Check if force flag is set
+				force, _ := cmd.Flags().GetBool("force")
 
-			// Check if the API server is online
-			if !isAPIServerOnline(config.APIUrl) {
-				fmt.Println("API server is offline")
-				return
-			}
+				client := &http.Client{}
+				req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/docker/image/rm?targetid=%s&toforce=%t", config.APIUrl, image, force), nil)
+				handleErr(err, "Error creating request")
 
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+				// Add authorization header with access token
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
 
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
+				resp, err := client.Do(req)
+				handleErr(err, "Error sending delete image request")
+				defer resp.Body.Close()
 
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
+				if resp.StatusCode == http.StatusOK {
+					var result struct {
+						Message string `json:"message"`
+					}
+					err = json.NewDecoder(resp.Body).Decode(&result)
+					handleErr(err, "Error decoding delete image response")
 
-			// Check if force flag is set
-			force, _ := cmd.Flags().GetBool("force")
-
-			client := &http.Client{}
-			req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/docker/image/rm?targetid=%s&toforce=%t", config.APIUrl, image, force), nil)
-			handleErr(err, "Error creating request")
-
-			// Add authorization header with access token
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
-
-			resp, err := client.Do(req)
-			handleErr(err, "Error sending delete image request")
-			defer resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				var result struct {
-					Message string `json:"message"`
+					fmt.Println(result.Message)
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error removing Docker image: %s", string(body))
 				}
-				err = json.NewDecoder(resp.Body).Decode(&result)
-				handleErr(err, "Error decoding delete image response")
-
-				fmt.Println(result.Message)
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error removing Docker image: %s", string(body))
-			}
+			})
 		},
 	}
 
@@ -643,38 +623,18 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			container := args[0]
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				resp, err := http.PostForm(fmt.Sprintf("%s/docker/restart", config.APIUrl), url.Values{"target": {container}})
+				handleErr(err, "Error sending restart container request")
+				defer resp.Body.Close()
 
-			// Check if the API server is online
-			if !isAPIServerOnline(config.APIUrl) {
-				fmt.Println("API server is offline")
-				return
-			}
-
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-
-			resp, err := http.PostForm(fmt.Sprintf("%s/docker/restart", config.APIUrl), url.Values{"target": {container}})
-			handleErr(err, "Error sending restart container request")
-			defer resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				fmt.Printf("Container %s restarted successfully.\n", container)
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error restarting container: %s", string(body))
-			}
+				if resp.StatusCode == http.StatusOK {
+					fmt.Printf("Container %s restarted successfully.\n", container)
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error restarting container: %s", string(body))
+				}
+			})
 		},
 	}
 
@@ -683,61 +643,41 @@ func main() {
 		Use:   "ls",
 		Short: "List all Docker images",
 		Run: func(cmd *cobra.Command, args []string) {
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				client := &http.Client{}
+				req, err := http.NewRequest("GET", fmt.Sprintf("%s/docker/image/ls", config.APIUrl), nil)
+				handleErr(err, "Error creating request")
 
-			// Check if the API server is online
-			if !isAPIServerOnline(config.APIUrl) {
-				fmt.Println("API server is offline")
-				return
-			}
+				// Add authorization header with access token
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
 
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+				resp, err := client.Do(req)
+				handleErr(err, "Error sending list Docker images request")
+				defer resp.Body.Close()
 
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
+				if (resp.StatusCode == http.StatusOK) {
+					var result struct {
+						Images []struct {
+							Repository string `json:"REPOSITORY"`
+							Tag        string `json:"TAG"`
+							ImageID    string `json:"IMAGE_ID"`
+							Created    string `json:"CREATED"`
+							Size       string `json:"SIZE"`
+						} `json:"images"`
+					}
 
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
+					err = json.NewDecoder(resp.Body).Decode(&result)
+					handleErr(err, "Error decoding Docker images response")
 
-			client := &http.Client{}
-			req, err := http.NewRequest("GET", fmt.Sprintf("%s/docker/image/ls", config.APIUrl), nil)
-			handleErr(err, "Error creating request")
-
-			// Add authorization header with access token
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
-
-			resp, err := client.Do(req)
-			handleErr(err, "Error sending list Docker images request")
-			defer resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				var result struct {
-					Images []struct {
-						Repository string `json:"REPOSITORY"`
-						Tag        string `json:"TAG"`
-						ImageID    string `json:"IMAGE_ID"`
-						Created    string `json:"CREATED"`
-						Size       string `json:"SIZE"`
-					} `json:"images"`
+					for _, image := range result.Images {
+						fmt.Printf("Repository: %s\nTag: %s\nImage ID: %s\nCreated: %s\nSize: %s\n\n",
+							image.Repository, image.Tag, image.ImageID, image.Created, image.Size)
+					}
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error listing Docker images: %s", string(body))
 				}
-
-				err = json.NewDecoder(resp.Body).Decode(&result)
-				handleErr(err, "Error decoding Docker images response")
-
-				for _, image := range result.Images {
-					fmt.Printf("Repository: %s\nTag: %s\nImage ID: %s\nCreated: %s\nSize: %s\n\n",
-						image.Repository, image.Tag, image.ImageID, image.Created, image.Size)
-				}
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error listing Docker images: %s", string(body))
-			}
+			})
 		},
 	}
 
