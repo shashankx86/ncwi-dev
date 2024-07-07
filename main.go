@@ -200,6 +200,33 @@ func promptInput(prompt string, maskInput bool) (string, error) {
 	return strings.TrimSpace(string(input)), nil
 }
 
+// postRUN handles common checks and token management for commands
+func postRUN(cmd *cobra.Command, args []string, action func(Config, TokenResponse)) {
+	config, err := loadConfig()
+	handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+
+	// Check if the API server is online
+	if !isAPIServerOnline(config.APIUrl) {
+		fmt.Println("API server is offline")
+		return
+	}
+
+	tokens, err := loadTokens()
+	handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+
+	// Check token expiration
+	if tokens.Expiration < time.Now().Unix() {
+		log.Fatal("Token has expired. Please authenticate again.")
+	}
+
+	// Reset token expiration
+	tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+	err = saveTokens(tokens)
+	handleErr(err, "Error updating token expiration")
+
+	action(config, tokens)
+}
+
 // printASCIIArt prints a dummy ASCII art
 func printASCIIArt() {
 	fmt.Println("                                                  ")
@@ -386,34 +413,14 @@ func main() {
 	
 	var cmdVersion = &cobra.Command{
 		Use:   "api-version",
-			Short: "Get the API version",
+		Short: "Get the API version",
 		Run: func(cmd *cobra.Command, args []string) {
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
+				handleErr(err, "Error getting version")
 	
-			// Check if the API server is online
-			if (!isAPIServerOnline(config.APIUrl)) {
-				fmt.Println("API server is offline")
-				return
-			}
-	
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-	
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-	
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-	
-			versionResponse, err := components.GetVersion(tokens.AccessToken, config.APIUrl)
-			handleErr(err, "Error getting version")
-	
-			fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
+				fmt.Printf("API Version: %s\nUser: %s\n", versionResponse.Version, versionResponse.User)
+			})
 		},
 	}
 	
@@ -421,34 +428,12 @@ func main() {
 		Use:   "list",
 		Short: "List all services",
 		Run: func(cmd *cobra.Command, args []string) {
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+				handleErr(err, "Error fetching services")
 	
-			// Check if the API server is online
-			if (!isAPIServerOnline(config.APIUrl)) {
-				fmt.Println("API server is offline")
-				return
-			}
-	
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-	
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-	
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-	
-			// Fetch services and handle the returned error
-			services, _, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
-			handleErr(err, "Error fetching services")
-	
-			// Print fetched services
-			components.PrintServices(services)
+				components.PrintServices(services)
+			})
 		},
 	}
 	
@@ -456,269 +441,143 @@ func main() {
 		Use:   "list",
 		Short: "List all sockets",
 		Run: func(cmd *cobra.Command, args []string) {
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				_, sockets, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
+				handleErr(err, "Error fetching services")
 	
-			// Check if the API server is online
-			if (!isAPIServerOnline(config.APIUrl)) {
-				fmt.Println("API server is offline")
-				return
-			}
-	
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-	
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-	
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-	
-			// Fetch sockets and handle the returned error
-			_, sockets, err := components.FetchServices(config.APIUrl, tokens.AccessToken)
-			handleErr(err, "Error fetching services")
-	
-			// Print fetched sockets
-			components.PrintSockets(sockets)
+				components.PrintSockets(sockets)
+			})
 		},
-	}	
-
-	// Add subcommands for stopping and starting services
+	}
+	
 	var cmdStopService = &cobra.Command{
 		Use:   "stop [service]",
 		Short: "Stop a specific service",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			service := args[0]
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
-			// Check if the API server is online
-			if !isAPIServerOnline(config.APIUrl) {
-				fmt.Println("API server is offline")
-				return
-			}
-
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-
-			resp, err := http.PostForm(fmt.Sprintf("%s/system/services/stop", config.APIUrl), url.Values{"target": {service}})
-			handleErr(err, "Error sending stop service request")
-			defer resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				fmt.Printf("Service %s stopped successfully.\n", service)
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error stopping service: %s", string(body))
-			}
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				resp, err := http.PostForm(fmt.Sprintf("%s/system/services/stop", config.APIUrl), url.Values{"target": {service}})
+				handleErr(err, "Error sending stop service request")
+				defer resp.Body.Close()
+	
+				if resp.StatusCode == http.StatusOK {
+					fmt.Printf("Service %s stopped successfully.\n", service)
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error stopping service: %s", string(body))
+				}
+			})
 		},
 	}
-
+	
 	var cmdStartService = &cobra.Command{
 		Use:   "start [service]",
 		Short: "Start a specific service",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			service := args[0]
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
-			// Check if the API server is online
-			if !isAPIServerOnline(config.APIUrl) {
-				fmt.Println("API server is offline")
-				return
-			}
-
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-
-			resp, err := http.PostForm(fmt.Sprintf("%s/system/services/start", config.APIUrl), url.Values{"target": {service}})
-			handleErr(err, "Error sending start service request")
-			defer resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				fmt.Printf("Service %s started successfully.\n", service)
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error starting service: %s", string(body))
-			}
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				resp, err := http.PostForm(fmt.Sprintf("%s/system/services/start", config.APIUrl), url.Values{"target": {service}})
+				handleErr(err, "Error sending start service request")
+				defer resp.Body.Close()
+	
+				if resp.StatusCode == http.StatusOK {
+					fmt.Printf("Service %s started successfully.\n", service)
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error starting service: %s", string(body))
+				}
+			})
 		},
 	}
-
-	// Add subcommands for docker commands
+	
 	var cmdDockerPS = &cobra.Command{
 		Use:   "ps",
 		Short: "List all currently running Docker containers",
 		Run: func(cmd *cobra.Command, args []string) {
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
-			// Check if the API server is online
-			if !isAPIServerOnline(config.APIUrl) {
-				fmt.Println("API server is offline")
-				return
-			}
-
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
-			// Check token expiration
-			if tokens.Expiration < time.Now().Unix() {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-
-			client := &http.Client{}
-			req, err := http.NewRequest("GET", fmt.Sprintf("%s/io/docker/running", config.APIUrl), nil)
-			handleErr(err, "Error creating request")
-
-			// Add authorization header with access token
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
-
-			resp, err := client.Do(req)
-			handleErr(err, "Error sending list Docker containers request")
-			defer resp.Body.Close()
-
-			if resp.StatusCode == http.StatusOK {
-				var result struct {
-					Containers []struct {
-						ContainerID string `json:"CONTAINER_ID"`
-						Image       string `json:"IMAGE"`
-						Command     string `json:"COMMAND"`
-						Created     string `json:"CREATED"`
-						Status      string `json:"STATUS"`
-						Ports       string `json:"PORTS"`
-						Names       string `json:"NAMES"`
-					} `json:"containers"`
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				client := &http.Client{}
+				req, err := http.NewRequest("GET", fmt.Sprintf("%s/io/docker/running", config.APIUrl), nil)
+				handleErr(err, "Error creating request")
+	
+				// Add authorization header with access token
+				req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
+	
+				resp, err := client.Do(req)
+				handleErr(err, "Error sending list Docker containers request")
+				defer resp.Body.Close()
+	
+				if resp.StatusCode == http.StatusOK {
+					var result struct {
+						Containers []struct {
+							ContainerID string `json:"CONTAINER_ID"`
+							Image       string `json:"IMAGE"`
+							Command     string `json:"COMMAND"`
+							Created     string `json:"CREATED"`
+							Status      string `json:"STATUS"`
+							Ports       string `json:"PORTS"`
+							Names       string `json:"NAMES"`
+						} `json:"containers"`
+					}
+	
+					err = json.NewDecoder(resp.Body).Decode(&result)
+					handleErr(err, "Error decoding Docker containers response")
+	
+					for _, container := range result.Containers {
+						fmt.Printf("ID: %s\nImage: %s\nCommand: %s\nCreated: %s\nStatus: %s\nPorts: %s\nNames: %s\n\n",
+							container.ContainerID, container.Image, container.Command, container.Created, container.Status, container.Ports, container.Names)
+					}
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error listing Docker containers: %s", string(body))
 				}
-
-				err = json.NewDecoder(resp.Body).Decode(&result)
-				handleErr(err, "Error decoding Docker containers response")
-
-				for _, container := range result.Containers {
-					fmt.Printf("ID: %s\nImage: %s\nCommand: %s\nCreated: %s\nStatus: %s\nPorts: %s\nNames: %s\n\n",
-						container.ContainerID, container.Image, container.Command, container.Created, container.Status, container.Ports, container.Names)
-				}
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error listing Docker containers: %s", string(body))
-			}
+			})
 		},
 	}
-
-	// Define the start command for Docker
+	
 	var cmdDockerStart = &cobra.Command{
 		Use:   "start [container]",
 		Short: "Start a specific Docker container",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			container := args[0]
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
-			// Check if the API server is online
-			if (!isAPIServerOnline(config.APIUrl)) {
-				fmt.Println("API server is offline")
-				return
-			}
-
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
-			// Check token expiration
-			if (tokens.Expiration < time.Now().Unix()) {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-
-			resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/start", config.APIUrl), url.Values{"target": {container}})
-			handleErr(err, "Error sending start container request")
-			defer resp.Body.Close()
-
-			if (resp.StatusCode == http.StatusOK) {
-				fmt.Printf("Container %s started successfully.\n", container)
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error starting container: %s", string(body))
-			}
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/start", config.APIUrl), url.Values{"target": {container}})
+				handleErr(err, "Error sending start container request")
+				defer resp.Body.Close()
+	
+				if resp.StatusCode == http.StatusOK {
+					fmt.Printf("Container %s started successfully.\n", container)
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error starting container: %s", string(body))
+				}
+			})
 		},
 	}
-
-	// Define the stop command for Docker
+	
 	var cmdDockerStop = &cobra.Command{
 		Use:   "stop [container]",
 		Short: "Stop a specific Docker container",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			container := args[0]
-			config, err := loadConfig()
-			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
-
-			// Check if the API server is online
-			if (!isAPIServerOnline(config.APIUrl)) {
-				fmt.Println("API server is offline")
-				return
-			}
-
-			tokens, err := loadTokens()
-			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
-
-			// Check token expiration
-			if (tokens.Expiration < time.Now().Unix()) {
-				log.Fatal("Token has expired. Please authenticate again.")
-			}
-
-			// Reset token expiration
-			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
-			err = saveTokens(tokens)
-			handleErr(err, "Error updating token expiration")
-
-			resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/stop", config.APIUrl), url.Values{"target": {container}})
-			handleErr(err, "Error sending stop container request")
-			defer resp.Body.Close()
-
-			if (resp.StatusCode == http.StatusOK) {
-				fmt.Printf("Container %s stopped successfully.\n", container)
-			} else {
-				body, _ := ioutil.ReadAll(resp.Body)
-				log.Fatalf("Error stopping container: %s", string(body))
-			}
+			postRUN(cmd, args, func(config Config, tokens TokenResponse) {
+				resp, err := http.PostForm(fmt.Sprintf("%s/io/docker/stop", config.APIUrl), url.Values{"target": {container}})
+				handleErr(err, "Error sending stop container request")
+				defer resp.Body.Close()
+	
+				if resp.StatusCode == http.StatusOK {
+					fmt.Printf("Container %s stopped successfully.\n", container)
+				} else {
+					body, _ := ioutil.ReadAll(resp.Body)
+					log.Fatalf("Error stopping container: %s", string(body))
+				}
+			})
 		},
 	}
-
+		
 	// Define the rm command for Docker
 	var cmdDockerRm = &cobra.Command{
 		Use:   "rm [image]",
