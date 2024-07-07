@@ -24,8 +24,10 @@ import (
 
 // Config represents the structure of the configuration file
 type Config struct {
-	APIUrl string `json:"api_url"`
+	APIUrl   string `json:"api_url"`
+	ShellUrl string `json:"shell_url"`
 }
+
 
 // TokenResponse represents the structure of the response from the login endpoint
 type TokenResponse struct {
@@ -114,10 +116,10 @@ func loadTokens() (TokenResponse, error) {
 	return tokens, nil
 }
 
-// saveConfig saves the API URL to the configuration file
-func saveConfig(apiUrl string) error {
+// saveConfig saves the API URL and Shell URL to the configuration file
+func saveConfig(apiUrl string, shellUrl string) error {
 	apiUrl = strings.TrimSuffix(apiUrl, "/") // Remove trailing slash if present
-	config := Config{APIUrl: apiUrl}
+	config := Config{APIUrl: apiUrl, ShellUrl: shellUrl}
 	data, err := json.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("error marshalling config: %v", err)
@@ -136,7 +138,7 @@ func saveConfig(apiUrl string) error {
 	return nil
 }
 
-// loadConfig loads the API URL from the configuration file
+// loadConfig loads the API URL and Shell URL from the configuration file
 func loadConfig() (Config, error) {
 	var config Config
 
@@ -255,9 +257,12 @@ func isAPIServerOnline(apiUrl string) bool {
 
 var cmdShell = &cobra.Command{
 	Use:   "shell",
-	Short: "Open a reverse shell through the WebSocket server",
+	Short: "Start a reverse shell to nest (experimental)",
 	Run: func(cmd *cobra.Command, args []string) {
-		u := url.URL{Scheme: "wss", Host: "nws.theaddicts.hackclub.app", Path: "/ws"}
+		config, err := loadConfig()
+		handleErr(err, "Error loading config")
+
+		u := url.URL{Scheme: "wss", Host: config.ShellUrl, Path: "/ws"}
 
 		// Connect to the WebSocket server
 		c, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
@@ -335,7 +340,6 @@ var cmdShell = &cobra.Command{
 	},
 }
 
-
 func main() {
 	// Get the name of the executable
 	exeName := filepath.Base(os.Args[0])
@@ -368,6 +372,27 @@ func main() {
 			fmt.Println("Configuration saved successfully.")
 		},
 	}
+
+	var cmdSetShellURL = &cobra.Command{
+		Use:   "shell-url <shell-url>",
+		Short: "Set the Reverse Shell URL",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			shellUrl := args[0]
+			if strings.HasPrefix(shellUrl, "http") {
+				log.Fatal("Invalid shell URL: must not start with http")
+			}
+	
+			config, err := loadConfig()
+			handleErr(err, "Error loading config")
+	
+			err = saveConfig(config.APIUrl, shellUrl)
+			handleErr(err, "Error saving config")
+	
+			fmt.Println("Shell URL configuration saved successfully.")
+		},
+	}
+	
 
 	var cmdAuth = &cobra.Command{
 		Use:   "auth",
