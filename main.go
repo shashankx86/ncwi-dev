@@ -819,6 +819,69 @@ func main() {
 		},
 	}
 
+	// Define the ls subcommand for Docker image
+	var cmdDockerImageLs = &cobra.Command{
+		Use:   "ls",
+		Short: "List all Docker images",
+		Run: func(cmd *cobra.Command, args []string) {
+			config, err := loadConfig()
+			handleErr(err, "Error loading config\nUse the 'configure set-url' command to set the API URL")
+
+			// Check if the API server is online
+			if !isAPIServerOnline(config.APIUrl) {
+				fmt.Println("API server is offline")
+				return
+			}
+
+			tokens, err := loadTokens()
+			handleErr(err, "Error loading tokens\nPlease authenticate using the 'configure auth' command")
+
+			// Check token expiration
+			if tokens.Expiration < time.Now().Unix() {
+				log.Fatal("Token has expired. Please authenticate again.")
+			}
+
+			// Reset token expiration
+			tokens.Expiration = time.Now().Add(30 * 24 * time.Hour).Unix()
+			err = saveTokens(tokens)
+			handleErr(err, "Error updating token expiration")
+
+			client := &http.Client{}
+			req, err := http.NewRequest("GET", fmt.Sprintf("%s/docker/image/ls", config.APIUrl), nil)
+			handleErr(err, "Error creating request")
+
+			// Add authorization header with access token
+			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", tokens.AccessToken))
+
+			resp, err := client.Do(req)
+			handleErr(err, "Error sending list Docker images request")
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				var result struct {
+					Images []struct {
+						Repository string `json:"REPOSITORY"`
+						Tag        string `json:"TAG"`
+						ImageID    string `json:"IMAGE_ID"`
+						Created    string `json:"CREATED"`
+						Size       string `json:"SIZE"`
+					} `json:"images"`
+				}
+
+				err = json.NewDecoder(resp.Body).Decode(&result)
+				handleErr(err, "Error decoding Docker images response")
+
+				for _, image := range result.Images {
+					fmt.Printf("Repository: %s\nTag: %s\nImage ID: %s\nCreated: %s\nSize: %s\n\n",
+						image.Repository, image.Tag, image.ImageID, image.Created, image.Size)
+				}
+			} else {
+				body, _ := ioutil.ReadAll(resp.Body)
+				log.Fatalf("Error listing Docker images: %s", string(body))
+			}
+		},
+	}
+
 	var cmdSystem = &cobra.Command{
 		Use:   "system",
 		Short: "System commands",
@@ -848,7 +911,7 @@ func main() {
 	cmdServices.AddCommand(cmdList, cmdStopService, cmdStartService)
 	cmdSystem.AddCommand(cmdSocket)
 	cmdSocket.AddCommand(cmdSocketList)
-	cmdDocker.AddCommand(cmdDockerPS, cmdDockerStart, cmdDockerStop, cmdDockerRm, cmdDockerRestart)
+	cmdDocker.AddCommand(cmdDockerPS, cmdDockerStart, cmdDockerStop, cmdDockerRm, cmdDockerRestart, cmdDockerImageLs)
 
 	// Execute the root command
 	if err := rootCmd.Execute(); err != nil {
