@@ -180,7 +180,7 @@ func getAPIURL(baseURL string) string {
 
 // getShellURL forms the shell URL using the base URL
 func getShellURL(baseURL string) string {
-	return "wss://nws." + baseURL + "/ws"
+	return "nws." + baseURL
 }
 
 // promptInput prompts the user for input and masks the input with dots
@@ -269,7 +269,6 @@ func printASCIIArt() {
 	fmt.Println("                                                  ")
 }
 
-// isAPIServerOnline checks if the API server is online
 // isAPIServerOnline checks if the API server is online
 func isAPIServerOnline(baseURL string) bool {
 	apiURL := getAPIURL(baseURL) + "/ping"
@@ -382,6 +381,7 @@ func main() {
 		Use:   exeName,
 		Short: "CLI tool for API interaction",
 		Run: func(cmd *cobra.Command, args []string) {
+			printASCIIArt()
 			// Display the help message if no arguments are provided
 			cmd.Help()
 		},
