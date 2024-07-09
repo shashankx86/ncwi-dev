@@ -16,7 +16,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'null'),
 
     /*
     |--------------------------------------------------------------------------
@@ -109,8 +109,10 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
-	'null' => [
-            'driver' => 'null',
+        'null' => [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
         ],
 
     ],
