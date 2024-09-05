@@ -1,7 +1,8 @@
-# Vue 3 + Vite
+# NCWI
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+### WebUI
+frontend for ncwi 
 
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (previously Volar) and disable Vetur
+### gallery
+![image](https://github.com/user-attachments/assets/7cf6aca6-d459-4dc8-a810-8d528b6ccce9)
+![image](https://github.com/user-attachments/assets/8dc8cf4c-f518-4c1b-8924-58bc6eeec7fb)
